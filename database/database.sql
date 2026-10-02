@@ -118,7 +118,7 @@ INSERT INTO allowed_transition (type_id, from_status_id, to_status_id) VALUES
 CREATE TABLE person(
     id                              SERIAL PRIMARY KEY,
     person_key                      CHAR(36) NOT NULL,
-    cpf                             CHAR(11) NOT NULL,
+    cpf                             CHAR(14) NOT NULL,
     name                            VARCHAR(255) NOT NULL,
     birthdate                       DATE NOT NULL,
     email                           VARCHAR(255) NOT NULL,

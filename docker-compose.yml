@@ -9,7 +9,7 @@ services:
     ports:
       - "${DB_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bootcamp-nrv -d banco-nrv-qitech"]
+      test: ["CMD-SHELL", "pg_isready -U bootcamp-nrv -d bootcamp-nrv"]
       interval: 3s
       timeout: 3s
       retries: 20
