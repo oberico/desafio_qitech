@@ -1,16 +1,28 @@
 services:
-
-  db:
-    build: ./database/.
+  banco-db:
+    build: ./banco/database
     environment:
-      POSTGRES_USER: bootcamp-nrv
-      POSTGRES_PASSWORD: bootcamp-nrv
-      POSTGRES_DB: banco-nrv-qitech
+      POSTGRES_USER: ${BANCO_DB_USER:-rnv}
+      POSTGRES_PASSWORD: ${BANCO_DB_PASSWORD:-rnv}
+      POSTGRES_DB: ${BANCO_DB_NAME:-banco}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${BANCO_DB_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bootcamp-nrv -d bootcamp-nrv"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
+      test: ["CMD-SHELL", "pg_isready -U ${BANCO_DB_USER:-rnv} -d ${BANCO_DB_NAME:-banco}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
+  transferencias-db:
+    build: ./transferencias/database
+    environment:
+      POSTGRES_USER: ${TRANSF_DB_USER:-rnv}
+      POSTGRES_PASSWORD: ${TRANSF_DB_PASSWORD:-rnv}
+      POSTGRES_DB: ${TRANSF_DB_NAME:-transferencias}
+    ports:
+      - "${TRANSF_DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TRANSF_DB_USER:-rnv} -d ${TRANSF_DB_NAME:-transferencias}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
