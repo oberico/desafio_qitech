@@ -1,8 +1,8 @@
-# desafio_qitech
+# Desafio QI Tech - Banco RNV
 
 Repositório da aplicação para o desafio do Bootcamp QI Tech
 
-Por enquanto, pra rodar o banco
+Por enquanto, pra rodar os containers no modo desenvolvimento:
 
 docker compose up
 
