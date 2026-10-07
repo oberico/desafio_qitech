@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${BANCO_DB_PASSWORD:-rnv}
       POSTGRES_DB: ${BANCO_DB_NAME:-banco}
     ports:
-      - "${BANCO_DB_PORT:-5432}:5432"
+      - "${BANCO_DB_PORT:-5434}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${BANCO_DB_USER:-rnv} -d ${BANCO_DB_NAME:-banco}"]
       interval: 5s
