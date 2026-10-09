@@ -3,8 +3,8 @@ import os
 import pytest
 import requests
 
-from testkit import RequestGenerator
-from testkit.transferencias import PaymentRequests
+from tests.utils.request_generator import RequestGenerator
+from tests.utils.payment_requests import PaymentRequests
 
 TRANSFERENCIAS_API_URL = os.getenv("TRANSFERENCIAS_API_URL", "http://localhost:8002")
 

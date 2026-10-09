@@ -171,11 +171,13 @@ pytest
 
 As APIs precisam estar respondendo antes. Se você acabou de dar `docker compose up`, espere os dois serviços ficarem `healthy`.
 
-O resultado sai assim:
+O resultado sai assim (16 verdes, 8 vermelhos esperados — payment ainda não existe):
 
 ```
-tests/integration/test_health_check.py::TestHealthCheck::test_health_check PASSED
-============================== 35 passed in 1.54s ==============================
+banco/tests/integration/test_health_check.py::test_health_check PASSED
+transferencias/tests/integration/test_health_check.py::test_health_check PASSED
+transferencias/tests/integration/payment/test_payment_create.py::test_create_payment FAILED
+============================== 16 passed, 8 failed in 2.1s ==============================
 ```
 
 Para rodar só um arquivo:

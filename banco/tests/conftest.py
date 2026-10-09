@@ -3,7 +3,7 @@ import os
 import pytest
 import requests
 
-from testkit import RequestGenerator
+from tests.utils.request_generator import RequestGenerator
 
 BANCO_API_URL = os.getenv("BANCO_API_URL", "http://localhost:8001")
 

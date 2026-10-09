@@ -1,4 +1,4 @@
-from testkit.random_generator import RandomGenerator
+from tests.utils.random_generator import RandomGenerator
 
 
 class PayloadGenerator:

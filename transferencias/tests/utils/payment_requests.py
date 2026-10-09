@@ -1,9 +1,8 @@
-from testkit.payload_generator import PayloadGenerator
-from testkit.request_generator import RequestGenerator as HttpRequestGenerator
+from tests.utils.request_generator import RequestGenerator
 
 
 class PaymentRequests:
-    def __init__(self, api: HttpRequestGenerator):
+    def __init__(self, api: RequestGenerator):
         self.api = api
 
     def post_payment(self, payload: dict, idempotency_key: str = None) -> tuple:
@@ -12,6 +11,3 @@ class PaymentRequests:
 
     def get_payment(self, payment_key: str) -> tuple:
         return self.api.get(f"/payments/{payment_key}")
-
-
-__all__ = ["PayloadGenerator", "PaymentRequests"]

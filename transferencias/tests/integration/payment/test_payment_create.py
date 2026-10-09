@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from testkit.transferencias import PayloadGenerator
+from tests.utils.payload_generator import PayloadGenerator
 
 
 class TestPaymentCreate:

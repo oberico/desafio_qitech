@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS builder
+FROM python:3.11.16-slim AS builder
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -7,7 +7,7 @@ COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt
 
-FROM python:3.11-slim AS api
+FROM python:3.11.16-slim AS api
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src \
