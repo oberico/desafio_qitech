@@ -9,7 +9,8 @@ local.env
 *.pfx
 credentials
 .aws/
-
+internal_docs/*
+internal_docs
 # --- Dados -------------------------------------------------
 *.csv
 *.xlsx
