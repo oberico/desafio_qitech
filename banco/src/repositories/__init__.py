@@ -1,1 +1,2 @@
 from repositories.client_repository import ClientRepository
+from repositories.company_repository import CompanyRepository
