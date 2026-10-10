@@ -1,10 +1,13 @@
-from fastapi import status as http_status
+from fastapi import Response, status
 from fastapi.responses import JSONResponse
 
-from controllers.health_check_controller import HealthCheckController
+from constants import SERVICE_NAME
 
 
 class HealthCheckResource:
-    def on_get(self) -> JSONResponse:
-        controller = HealthCheckController()
-        return JSONResponse(content=controller.check(), status_code=http_status.HTTP_200_OK)
+    def on_get_home(self) -> JSONResponse:
+        home = {"service": SERVICE_NAME}
+        return JSONResponse(content=home, status_code=status.HTTP_200_OK)
+
+    def on_get_health_check(self) -> Response:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
