@@ -12,6 +12,28 @@ class ForbiddenNotInternal(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class NotFoundRoute(QIException):
+    code = "RNV000004"
+
+    def __init__(self) -> None:
+        title = "Route not Found"
+        http_status = 404
+        description = "The requested route does not exist."
+        translation = "A rota solicitada não existe."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class MethodNotAllowed(QIException):
+    code = "RNV000005"
+
+    def __init__(self) -> None:
+        title = "Method not Allowed"
+        http_status = 405
+        description = "The HTTP method is not allowed for this route."
+        translation = "O método HTTP não é permitido para esta rota."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class InvalidAmount(QIException):
     code = "RNV001023"
 
