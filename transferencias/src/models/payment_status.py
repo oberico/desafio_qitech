@@ -12,7 +12,6 @@ class PaymentStatus(Base):
 
     __table_args__ = (UniqueConstraint("enumerator"),)
 
-    PENDING = "pending"
     HELD = "held"
     SETTLED = "settled"
     REFUNDED = "refunded"

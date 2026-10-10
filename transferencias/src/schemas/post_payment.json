@@ -5,14 +5,13 @@
     "amount_minor": {
       "type": "integer"
     },
-    "origin": {
-      "type": "string",
-      "enum": ["gateway", "tap_to_pay"]
-    },
     "method": {
       "type": "string",
-      "minLength": 1,
-      "maxLength": 30
+      "enum": [
+        "pix",
+        "boleto",
+        "card"
+      ]
     },
     "company_key": {
       "type": "string",
@@ -25,7 +24,7 @@
   },
   "required": [
     "amount_minor",
-    "origin",
+    "method",
     "company_key",
     "account_key"
   ],

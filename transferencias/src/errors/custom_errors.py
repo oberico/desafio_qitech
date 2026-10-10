@@ -2,7 +2,7 @@ from errors import QIException
 
 
 class InvalidAmount(QIException):
-    code = "RNV001020"
+    code = "RNV001023"
 
     def __init__(self, amount_minor) -> None:
         title = "Invalid Amount"
@@ -13,7 +13,7 @@ class InvalidAmount(QIException):
 
 
 class NotFoundPayment(QIException):
-    code = "RNV001022"
+    code = "RNV001025"
 
     def __init__(self, payment_key) -> None:
         title = "Payment not Found"
@@ -31,4 +31,15 @@ class IdempotencyKeyReused(QIException):
         http_status = 422
         description = f"The idempotency key {idempotency_key} was already used with a different payload."
         translation = "Esta chave de idempotência já foi usada com outro conteúdo."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidSchema(QIException):
+    code = "RNV000001"
+
+    def __init__(self, reason) -> None:
+        title = "Invalid Schema"
+        http_status = 400
+        description = f"The request does not match the expected schema: {reason}"
+        translation = "A requisição não está no formato esperado."
         super().__init__(title, self.code, http_status, description, translation)
