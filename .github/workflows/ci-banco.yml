@@ -26,9 +26,11 @@ jobs:
         run: pip install -r banco/requirements-dev.txt
 
       - name: Build and start containers
+        id: build
         run: docker compose up -d --build banco-db banco-api
 
       - name: Wait for API to be healthy
+        id: health
         run: |
           url=http://localhost:8001/health_check
           for attempt in $(seq 1 30); do
@@ -42,6 +44,7 @@ jobs:
           exit 1
 
       - name: Run pytest (banco)
+        id: pytest
         run: |
           mkdir -p reports
           cd banco
@@ -60,6 +63,7 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           JOB_STATUS: ${{ job.status }}
+          STEPS_JSON: ${{ toJSON(steps) }}
           SERVICE_TITLE: "Banco CI"
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
@@ -72,37 +76,5 @@ jobs:
             echo "DISCORD_WEBHOOK_URL not set; skipping notification"
             exit 0
           fi
-          python3 - <<'PY' > payload.json
-          import glob, json, os
-          import xml.etree.ElementTree as ET
-
-          total = failed = skipped = 0
-          for path in glob.glob("reports/*.xml"):
-              suite = ET.parse(path).getroot()
-              suite = suite if suite.tag == "testsuite" else suite.find("testsuite")
-              total += int(suite.get("tests", 0))
-              failed += int(suite.get("failures", 0)) + int(suite.get("errors", 0))
-              skipped += int(suite.get("skipped", 0))
-          passed = total - failed - skipped
-
-          ok = os.environ["JOB_STATUS"] == "success"
-          message = os.environ["COMMIT_MESSAGE"].splitlines()[0][:200] if os.environ["COMMIT_MESSAGE"] else ""
-          sha = os.environ["COMMIT_SHA"][:7]
-          title = os.environ["SERVICE_TITLE"]
-          embed = {
-              "title": f"✅ {title} passed" if ok else f"❌ {title} failed",
-              "url": os.environ["RUN_URL"],
-              "color": 3066993 if ok else 15158332,
-              "fields": [
-                  {"name": "Green", "value": str(passed), "inline": True},
-                  {"name": "Red", "value": str(failed), "inline": True},
-                  {"name": "Skipped", "value": str(skipped), "inline": True},
-                  {"name": "Branch", "value": os.environ["BRANCH"], "inline": True},
-                  {"name": "Author", "value": os.environ["ACTOR"], "inline": True},
-                  {"name": "Commit", "value": f"[`{sha}`]({os.environ['COMMIT_URL']}) {message}"},
-                  {"name": "Run", "value": f"[Open GitHub Actions run]({os.environ['RUN_URL']})"},
-              ],
-          }
-          print(json.dumps({"embeds": [embed]}))
-          PY
+          python3 .github/scripts/discord_report.py > payload.json
           curl -fsS -H "Content-Type: application/json" -d @payload.json "$DISCORD_WEBHOOK_URL"
