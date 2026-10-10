@@ -1,11 +1,17 @@
+import os 
+INTERNAL_TOKEN = os.getenv("INTERNAL_TOKEN", "internal-token-dev")
+
 class TestLedgerTransactionCreate:
     def test_refuses_missing_internal_token(self, api):
         status, response = api.post("/ledger/transactions", body={})
         assert status == 403
         assert response["code"] == "RNV000002"
 
-    # def test_refuses_empty_body(self, api):
-    #     ...
+    def test_refuses_empty_body(self, api):
+        headers = {"INTERNAL-TOKEN": INTERNAL_TOKEN}
+        status, response = api.post("/ledger/transactions", body={}, headers= headers)
+        assert status == 400
+        assert response["code"] == "RNV000001"
 
     # def test_create_transaction(self, api):
     #     ...

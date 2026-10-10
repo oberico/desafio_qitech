@@ -1,0 +1,10 @@
+{
+    "tittle": "PostLedgerTransaction",
+    "type": "object",
+    "properties": {
+        "type": {"type": "string"},
+        "idempotency_key": {"type": "string"},
+        "entries": {"type": "array"}
+    },
+    "required":["type", "idempotency_key", "entries"]
+}
