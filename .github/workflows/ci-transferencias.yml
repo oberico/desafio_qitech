@@ -70,7 +70,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha || github.sha }}
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          COMMIT_MESSAGE: ${{ github.event.pull_request && format('PR #{0}: {1}', github.event.pull_request.number, github.event.pull_request.title) || github.event.head_commit.message }}
+          COMMIT_MESSAGE: ${{ github.event.pull_request.title || github.event.head_commit.message }}
           BRANCH: ${{ github.head_ref || github.ref_name }}
           ACTOR: ${{ github.actor }}
         run: |
