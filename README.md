@@ -93,18 +93,22 @@ Dica opcional: se você rodou versões antigas do projeto, podem sobrar volumes 
 
 ```bash
 # Banco
-curl http://localhost:8001/health_check
+curl -i http://localhost:8001/health_check
 
 # Transferências
-curl http://localhost:8002/health_check
+curl -i http://localhost:8002/health_check
+curl -i http://localhost:8002/
 ```
 
 Esperado:
-```json
-{"status": "ok"}
-```
 
-Ambas as rotas devem retornar `200 OK`.
+| Serviço | Rota | Resposta |
+|---|---|---|
+| Banco | `/health_check` | `200 OK`, corpo `{"status": "ok"}` |
+| Transferências | `/health_check` | `204 No Content`, **sem corpo** |
+| Transferências | `/` | `200 OK`, corpo `{"service": "transferencias"}` |
+
+Toda resposta do Transferências e do Banco traz o header `X-Request-ID`. O Banco ainda usa o health check antigo (`200` com `{"status": "ok"}`); o do Transferências já segue o estilo novo.
 
 ---
 
@@ -254,7 +258,7 @@ Testes:
 ## Problemas comuns
 
 - **`ModuleNotFoundError` ou `pytest: command not found`** → o venv não está ativado. Confira se o prompt mostra `(.venv)`; se não, rode `source .venv/bin/activate` na raiz (Windows: veja os comandos acima).
-- **`could not reach the ... API ... run docker compose up first`** → os containers não estão de pé. Rode `docker compose up -d` e espere ficarem `healthy` (`docker compose ps`).
+- **`could not reach the ... API`** (a mensagem manda rodar `docker compose up -d` primeiro) → os containers não estão de pé. Rode `docker compose up -d` e espere ficarem `healthy` (`docker compose ps`).
 - **Porta ocupada (8001/8002/5433/5434)** → outra instância ou containers antigos. Rode `docker compose down` e suba de novo.
 - **Criou venv dentro de `banco/` ou `transferencias/`** → apague (`rm -rf banco/.venv transferencias/.venv`) e use o `.venv` da raiz.
 - **Mudou o schema do banco e nada mudou** → o `database.sql` só roda quando o container do banco é criado. Rode `docker compose down && docker compose up -d` (o banco é efêmero, volta do zero).
