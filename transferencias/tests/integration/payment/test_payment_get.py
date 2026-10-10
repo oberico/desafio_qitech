@@ -1,0 +1,28 @@
+from uuid import uuid4
+
+from tests.utils.payload_generator import PayloadGenerator
+
+
+ERROR_FIELDS = {"title", "description", "translation", "code"}
+
+
+class TestPaymentGet:
+    def test_gets_created_payment_by_key(self, payments):
+        payload = PayloadGenerator.create_payment_payload()
+        _, created = payments.post_payment(payload, str(uuid4()))
+
+        status, response = payments.get_payment(created["payment_key"])
+
+        assert status == 200
+        assert response["payment_key"] == created["payment_key"]
+        assert response["status"] == "held"
+
+    def test_get_unknown_payment_is_not_found(self, payments):
+        status, response = payments.get_payment(str(uuid4()))
+        assert status == 404
+        assert response["code"] == "RNV001025"
+
+    def test_not_found_error_has_exactly_the_four_documented_fields(self, payments):
+        status, response = payments.get_payment(str(uuid4()))
+        assert status == 404
+        assert set(response) == ERROR_FIELDS
