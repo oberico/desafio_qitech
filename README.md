@@ -11,21 +11,62 @@ Instituição de pagamento que movimenta dinheiro de terceiros via gateway agnó
 ### Pré-requisitos
 
 - Docker & Docker Compose
-- Python 3.11 (opcional, só se rodar sem containers)
+- Python 3.11.x (a versão do projeto está em `.python-version`: 3.11.16). Necessário para rodar os testes na sua máquina.
 
-### Levantar os serviços
+### Primeira vez, passo a passo
+
+**1. Clonar o repositório e entrar na raiz**
 
 ```bash
-docker compose up
+git clone <url-do-repositorio>
+cd desafio_qitech
 ```
 
-Isso levanta:
+**2. Criar e ativar o venv — um único, na raiz**
+
+O projeto tem **um único venv**, em `desafio_qitech/.venv`, e ele serve aos **dois** serviços. **Não crie venv dentro de `banco/` nem de `transferencias/`.**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+```
+
+No Windows, a ativação muda:
+
+```powershell
+# PowerShell
+.venv\Scripts\Activate.ps1
+
+# cmd
+.venv\Scripts\activate.bat
+```
+
+Confirme que ativou:
+- o prompt mostra `(.venv)` no começo;
+- `which python` (Mac/Linux) ou `where python` (Windows) aponta para dentro do `.venv` da raiz.
+
+O `requirements-dev.txt` da raiz instala `banco/requirements.txt` + `transferencias/requirements.txt` (mesmas versões nos dois) + `pytest`. Os `requirements*.txt` dentro de `banco/` e `transferencias/` existem para o Docker (cada imagem cria seu próprio venv isolado em `/opt/venv`) e para o CI — você não precisa mexer neles. No Mac ARM, o `psycopg2-binary==2.9.10` já está fixado; não altere.
+
+**3. Levantar os serviços**
+
+```bash
+docker compose up --build
+```
+
+A primeira vez demora (build das imagens). Isso levanta 4 containers:
 - **banco-db** (PostgreSQL na porta 5434)
 - **banco-api** (FastAPI na porta 8001)
 - **transferencias-db** (PostgreSQL na porta 5433)
 - **transferencias-api** (FastAPI na porta 8002)
 
-Espere até ver `banco-api` e `transferencias-api` com status `healthy` (healthcheck passa).
+Espere os 4 ficarem `healthy`/Up. O `.env` é opcional (há defaults); se quiser personalizar, copie o `.env.example`.
+
+**4. Conferir o health check** (veja abaixo)
+
+**5. Rodar os testes** com `pytest` na **raiz**, com o venv ativo (veja [Como Testar](#como-testar)).
+
+Se mudar o schema (`database.sql`): `docker compose down -v && docker compose up --build`.
 
 ### Testar Health Check
 
@@ -151,46 +192,51 @@ Para detalhes completos, leia [`CLAUDE.md`](./CLAUDE.md).
 
 ## Como Testar
 
-Os testes rodam **na sua máquina**, contra as APIs que estão de pé no Docker. São dois passos: um de uma vez só, outro toda vez.
-
-**Uma vez só — instalar as dependências de teste:**
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
-```
-
-No Windows, a segunda linha é `.venv\Scripts\activate`.
-
-**Toda vez — com os containers de pé, em outro terminal:**
+Os testes rodam **na sua máquina** (usando o venv da raiz), contra as APIs que estão de pé no Docker. Toda vez: containers de pé (em outro terminal), venv ativo (`(.venv)` no prompt) e, a partir da **raiz**:
 
 ```bash
 pytest
 ```
 
-As APIs precisam estar respondendo antes. Se você acabou de dar `docker compose up`, espere os dois serviços ficarem `healthy`.
+Se a API não estiver de pé, a suíte aborta com a mensagem pedindo `docker compose up`.
 
-O resultado sai assim (16 verdes, 8 vermelhos esperados — payment ainda não existe):
+O `pytest` na raiz roda `banco` e `transferencias` em sequência, imprimindo `=== banco ===` e `=== transferencias ===`. Isso é de propósito: os dois serviços têm um pacote `tests` com o mesmo nome, então o `conftest.py` da raiz roda cada serviço em um processo separado. A saída fica assim (contagens de hoje, com a API de pé):
 
 ```
-banco/tests/integration/test_health_check.py::test_health_check PASSED
-transferencias/tests/integration/test_health_check.py::test_health_check PASSED
-transferencias/tests/integration/payment/test_payment_create.py::test_create_payment FAILED
-============================== 16 passed, 8 failed in 2.1s ==============================
+=== banco ===
+2 passed
+
+=== transferencias ===
+29 passed
 ```
 
-Para rodar só um arquivo:
+Comandos úteis (sempre da raiz, com o venv ativo):
 
 ```bash
-pytest banco/tests/ -v
-pytest transferencias/tests/ -v
+pytest -v                # verboso
+pytest -q                # resumido
+pytest -k concurrent     # as flags são repassadas aos dois serviços
+pytest banco/tests -v    # só o banco
+pytest transferencias/tests -v    # só as transferências
+pytest transferencias/tests/integration/payment/test_payment_idempotency.py -v    # um arquivo
 ```
+
+Rodar `cd banco && pytest` ou `cd transferencias && pytest` não é obrigatório, mas também funciona, com o mesmo venv da raiz.
 
 Testes:
 - Caixa-preta via HTTP (não importam `src/`).
 - Conversam com as APIs por HTTP, como um cliente de verdade.
 - Um teste = uma regra (caminho feliz + cada código de erro RNV).
+
+---
+
+## Problemas comuns
+
+- **`ModuleNotFoundError` ou `pytest: command not found`** → o venv não está ativado. Confira se o prompt mostra `(.venv)`; se não, rode `source .venv/bin/activate` na raiz (Windows: veja os comandos acima).
+- **`could not reach the ... API ... run docker compose up first`** → os containers não estão de pé. Rode `docker compose up --build` e espere ficarem `healthy`.
+- **Porta ocupada (8001/8002/5433/5434)** → outra instância ou containers antigos. Rode `docker compose down` e suba de novo.
+- **Criou venv dentro de `banco/` ou `transferencias/`** → apague (`rm -rf banco/.venv transferencias/.venv`) e use o `.venv` da raiz.
+- **Mudou o schema do banco e nada mudou** → o `database.sql` só roda na criação do volume. Rode `docker compose down -v && docker compose up --build`.
 
 ---
 
