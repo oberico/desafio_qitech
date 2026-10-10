@@ -26,5 +26,9 @@ class RandomGenerator:
 
     @staticmethod
     def cnpj() -> str:
-        digits = "".join(str(random.randint(0, 9)) for _ in range(14))
-        return f"{digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:]}"
+        digits = [random.randint(0, 9) for _ in range(12)]
+        for weights in ([5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]):
+            remainder = sum(d * w for d, w in zip(digits, weights)) % 11
+            digits.append(0 if remainder < 2 else 11 - remainder)
+        d = "".join(map(str, digits))
+        return f"{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:]}"

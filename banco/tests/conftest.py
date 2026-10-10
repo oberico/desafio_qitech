@@ -4,6 +4,7 @@ import pytest
 import requests
 
 from tests.utils.client_requests import ClientRequests
+from tests.utils.company_requests import CompanyRequests
 from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.request_generator import RequestGenerator
 
@@ -52,3 +53,15 @@ def client_token(clients) -> str:
     status, response = clients.post_client(PayloadGenerator.create_client_payload())
     assert status == 201, f"não deu para criar o cliente do cenário: {status} {response}"
     return response["token"]
+
+
+@pytest.fixture
+def other_client_token(clients) -> str:
+    status, response = clients.post_client(PayloadGenerator.create_client_payload())
+    assert status == 201, f"não deu para criar o cliente do cenário: {status} {response}"
+    return response["token"]
+
+
+@pytest.fixture(scope="session")
+def companies(api) -> CompanyRequests:
+    return CompanyRequests(api)

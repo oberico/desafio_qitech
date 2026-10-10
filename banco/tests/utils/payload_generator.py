@@ -12,3 +12,12 @@ class PayloadGenerator:
         }
         payload.update(overrides)
         return payload
+
+    @staticmethod
+    def create_company_payload(**overrides) -> dict:
+        payload = {
+            "cnpj": RandomGenerator.cnpj(),
+            "legal_name": "Loja da Fulana LTDA",
+        }
+        payload.update(overrides)
+        return payload
