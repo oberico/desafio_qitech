@@ -3,7 +3,7 @@ import os
 APP_ENV = os.environ.get("APP_ENV", "local")
 SERVICE_NAME = os.environ.get("SERVICE_NAME", "transferencias")
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://rnv:rnv@localhost:5433/transferencias")
+DATABASE_URL = os.environ["DATABASE_URL"]
 INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN", "")
 BANK_API_URL = os.environ.get("BANK_API_URL", "http://localhost:8001")
 

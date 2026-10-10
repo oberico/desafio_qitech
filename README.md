@@ -294,3 +294,5 @@ BANK_API_URL=http://banco-api:8001
 
 Crie um `.env` na raiz se quiser sobrescrever.
 
+O `docker compose` monta a `DATABASE_URL` de cada API a partir das variáveis `*_DB_*` acima, então não precisa configurar nada para rodar. Dentro do código não existe URL de banco de fallback: uma API iniciada sem `DATABASE_URL` não sobe e acusa a variável que falta. Os valores `rnv` e `internal-token-dev` são só para desenvolvimento local; em qualquer outro ambiente defina os seus no `.env`.
+
