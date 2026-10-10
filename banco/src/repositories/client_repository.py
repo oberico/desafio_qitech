@@ -25,14 +25,19 @@ class ClientRepository:
     def exists_with_email(self, email: str) -> bool:
         return self.session.query(Client.id).filter(Client.email == email).first() is not None
 
-    def create(self, client: Client, api_token: ApiToken) -> None:
-        self.session.add(client)
-        self.session.flush()
-        api_token.client_id = client.id
-        self.session.add(api_token)
-        self.session.flush()
+    def try_create(self, client: Client, api_token: ApiToken) -> str:
+        try:
+            self.session.add(client)
+            self.session.flush()
+            api_token.client_id = client.id
+            self.session.add(api_token)
+            self.session.flush()
+        except IntegrityError as error:
+            self.session.rollback()
+            return self._violated_constraint(error) or "unknown"
+        return None
 
     @staticmethod
-    def violated_constraint(error: IntegrityError) -> str:
+    def _violated_constraint(error: IntegrityError) -> str:
         diag = getattr(error.orig, "diag", None)
         return getattr(diag, "constraint_name", None)
