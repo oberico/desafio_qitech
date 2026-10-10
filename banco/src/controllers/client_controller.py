@@ -7,7 +7,14 @@ from sqlalchemy.exc import IntegrityError
 from constants import SCHEMAS_DIR
 from controllers.base_controller import BaseController
 from dtos import ClientDTO
-from errors import CpfAlreadyRegistered, EmailAlreadyRegistered, InvalidCpf, InvalidSchema, UnderageClient
+from errors import (
+    CpfAlreadyRegistered,
+    EmailAlreadyRegistered,
+    InvalidClientToken,
+    InvalidCpf,
+    InvalidSchema,
+    UnderageClient,
+)
 from models import ApiToken, Client
 from repositories import ClientRepository
 from utils.cpf import is_valid_cpf
@@ -58,6 +65,15 @@ class ClientController(BaseController):
         client_dto = ClientDTO.obj_to_dict(client)
         self.session.commit()
         return {**client_dto, "token": token}
+
+    def authenticate(self, token: str) -> Client:
+        client = self.client_repository.get_by_active_token_hash(hash_token(token)) if token else None
+        if client is None:
+            raise InvalidClientToken()
+        return client
+
+    def get_me(self, client_id: int) -> dict:
+        return ClientDTO.obj_to_dict(self.client_repository.get_by_id(client_id))
 
     @staticmethod
     def _parse_birthdate(value: str) -> date:

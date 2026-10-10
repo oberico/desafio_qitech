@@ -8,6 +8,17 @@ class ClientRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def get_by_id(self, client_id: int) -> Client:
+        return self.session.query(Client).filter(Client.id == client_id).first()
+
+    def get_by_active_token_hash(self, token_hash: str) -> Client:
+        return (
+            self.session.query(Client)
+            .join(ApiToken, ApiToken.client_id == Client.id)
+            .filter(ApiToken.token_hash == token_hash, ApiToken.revoked_at.is_(None))
+            .first()
+        )
+
     def exists_with_cpf(self, cpf: str) -> bool:
         return self.session.query(Client.id).filter(Client.cpf == cpf).first() is not None
 

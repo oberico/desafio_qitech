@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from errors import InvalidSchema, QIException
 from errors.handlers import qi_exception_to_response
 from middlewares import (
+    register_client_auth_middleware,
     register_internal_token_middleware,
     register_request_context_middleware,
     register_request_logger_middleware,
@@ -29,6 +30,7 @@ def handle_request_validation(request: Request, exception: RequestValidationErro
 application.add_exception_handler(QIException, handle_qi_exception)
 application.add_exception_handler(RequestValidationError, handle_request_validation)
 
+register_client_auth_middleware(application)
 register_session_manager_middleware(application)
 register_internal_token_middleware(application)
 register_request_logger_middleware(application)
@@ -40,3 +42,4 @@ client_resource = ClientResource()
 application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
 application.add_api_route("/health_check", health_check_resource.on_get_health_check, methods=["GET"])
 application.add_api_route("/clients", client_resource.on_post, methods=["POST"])
+application.add_api_route("/me", client_resource.on_get_me, methods=["GET"])
