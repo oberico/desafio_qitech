@@ -25,7 +25,9 @@ def handle_qi_exception(request: Request, exception: QIException) -> JSONRespons
 
 
 def handle_request_validation(request: Request, exception: RequestValidationError) -> JSONResponse:
-    return qi_exception_to_response(InvalidSchema(str(exception.errors()[0]["loc"])))
+    error = exception.errors()[0]
+    location = ".".join(str(part) for part in error["loc"])
+    return qi_exception_to_response(InvalidSchema(f"{location}: {error['msg']}"))
 
 
 ROUTING_ERRORS = {404: NotFoundRoute, 405: MethodNotAllowed}

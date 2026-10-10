@@ -39,6 +39,12 @@ class TestPaymentValidation:
         assert status == 400
         assert response["code"] == "RNV000001"
 
+    def test_missing_idempotency_key_description_is_readable(self, payments):
+        payload = PayloadGenerator.create_payment_payload()
+        _, response = payments.post_payment(payload, None)
+        assert response["description"].startswith("The request does not match the expected schema: header.")
+        assert "('" not in response["description"]
+
     def test_schema_error_description_names_the_offending_field(self, payments):
         payload = PayloadGenerator.create_payment_payload(method="carrier_pigeon")
         status, response = payments.post_payment(payload, str(uuid4()))

@@ -1,11 +1,10 @@
-class TestClientMe:
-    def test_refuses_missing_token(self, clients):
-        status, response = clients.get_me()
-        assert status == 401
-        assert response["code"] == "RNV000003"
+import pytest
 
-    def test_refuses_invalid_token(self, clients):
-        status, response = clients.get_me("token-que-nao-existe")
+
+class TestClientMe:
+    @pytest.mark.parametrize("token", [None, "token-que-nao-existe"], ids=["missing_token", "unknown_token"])
+    def test_refuses_missing_or_unknown_token(self, clients, token):
+        status, response = clients.get_me(token)
         assert status == 401
         assert response["code"] == "RNV000003"
 
