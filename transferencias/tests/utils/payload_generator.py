@@ -6,7 +6,7 @@ class PayloadGenerator:
     def create_payment_payload(**overrides) -> dict:
         payload = {
             "amount_minor": RandomGenerator.amount_minor(),
-            "origin": "gateway",
+            "method": "pix",
             "company_key": RandomGenerator.uuid(),
             "account_key": RandomGenerator.uuid(),
         }

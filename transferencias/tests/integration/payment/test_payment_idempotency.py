@@ -48,3 +48,16 @@ class TestPaymentIdempotency:
         status, second = payments.post_payment(PayloadGenerator.create_payment_payload(), key)
         assert status == 201
         assert second["payment_key"] != first["payment_key"]
+
+    def test_concurrent_replays_create_a_single_payment(self, payments):
+        from concurrent.futures import ThreadPoolExecutor
+
+        key = str(uuid4())
+        payload = PayloadGenerator.create_payment_payload()
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            results = list(pool.map(lambda _: payments.post_payment(payload, key), range(10)))
+
+        statuses = sorted(status for status, _ in results)
+        assert statuses == [200] * 9 + [201]
+        assert len({response["payment_key"] for _, response in results}) == 1
