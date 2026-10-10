@@ -32,8 +32,10 @@ class TestInternalToken:
         assert set(response.keys()) == ERROR_FIELDS
 
     def test_internal_route_with_correct_token_passes_the_middleware(self, api):
-        status, _ = api.get("/internal/anything", {"INTERNAL-TOKEN": INTERNAL_TOKEN})
+        status, response = api.get("/internal/anything", {"INTERNAL-TOKEN": INTERNAL_TOKEN})
         assert status == 404
+        assert response["code"] == "RNV000004"
+        assert set(response.keys()) == ERROR_FIELDS
 
     @pytest.mark.parametrize("method, path, build_body, headers, expected_status", PUBLIC_REQUESTS.values(), ids=PUBLIC_REQUESTS.keys())
     def test_public_routes_do_not_require_token(self, api, method, path, build_body, headers, expected_status):
