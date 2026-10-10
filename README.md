@@ -104,11 +104,12 @@ Esperado:
 
 | Serviço | Rota | Resposta |
 |---|---|---|
-| Banco | `/health_check` | `200 OK`, corpo `{"status": "ok"}` |
+| Banco | `/health_check` | `204 No Content`, **sem corpo** |
+| Banco | `/` | `200 OK`, corpo `{"service": "banco"}` |
 | Transferências | `/health_check` | `204 No Content`, **sem corpo** |
 | Transferências | `/` | `200 OK`, corpo `{"service": "transferencias"}` |
 
-Toda resposta do Transferências e do Banco traz o header `X-Request-ID`. O Banco ainda usa o health check antigo (`200` com `{"status": "ok"}`); o do Transferências já segue o estilo novo.
+Toda resposta do Transferências e do Banco traz o header `X-Request-ID`.
 
 ---
 

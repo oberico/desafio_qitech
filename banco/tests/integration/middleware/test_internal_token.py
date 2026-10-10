@@ -30,7 +30,7 @@ class TestInternalToken:
 
     def test_health_check_does_not_require_token(self, api):
         status, _ = api.get("/health_check")
-        assert status == 200
+        assert status == 204
 
     def test_root_does_not_require_token(self, api):
         status, _ = api.get("/")

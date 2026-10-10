@@ -18,5 +18,5 @@ register_request_context_middleware(application)
 
 health_check_resource = HealthCheckResource()
 
-application.add_api_route("/", health_check_resource.on_get, methods=["GET"])
-application.add_api_route("/health_check", health_check_resource.on_get, methods=["GET"])
+application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
+application.add_api_route("/health_check", health_check_resource.on_get_health_check, methods=["GET"])
