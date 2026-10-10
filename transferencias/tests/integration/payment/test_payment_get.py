@@ -2,7 +2,6 @@ from uuid import uuid4
 
 from tests.utils.payload_generator import PayloadGenerator
 
-
 ERROR_FIELDS = {"title", "description", "translation", "code"}
 
 
@@ -21,8 +20,4 @@ class TestPaymentGet:
         status, response = payments.get_payment(str(uuid4()))
         assert status == 404
         assert response["code"] == "RNV001025"
-
-    def test_not_found_error_has_exactly_the_four_documented_fields(self, payments):
-        status, response = payments.get_payment(str(uuid4()))
-        assert status == 404
         assert set(response) == ERROR_FIELDS
