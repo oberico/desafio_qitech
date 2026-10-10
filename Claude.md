@@ -38,6 +38,10 @@ Antes de codar, leia `internal_docs/rfc-rnv-v7.2.md` (a spec) e `internal_docs/a
 - **Máquina de estados:** as transições permitidas moram em tabela (`allowed_transition` no Banco; `payment_transition`/`payout_transition` no Transferências) e o controller consulta antes de trocar o status. A conta usa o util `state_machine.py`. **O ledger só responde "o dinheiro se moveu?": `pending`/`settled`** — sem `failed` (ou faz settlement, ou faz reversal; o estorno não muda o status do original, quem marca é a reversal via `reverses_transaction_id` único). `failed` existe só em `payout_status`. `payment`: `held`/`settled`/`refunded`.
 - **Concorrência:** no **débito**, `SELECT ... FOR UPDATE` na **linha da `account`** (não na `entry`, que é append-only e não tem linha pra travar), soma o saldo **depois** de travar, confere, insere, commit — em **READ COMMITTED** (não mudar para REPEATABLE READ, quebra a conferência). Duas contas na mesma operação: travar na ordem do **id menor**. Crédito **não trava**; conta interna **nunca** trava. Na corrida saída × estorno, trava a **linha do `payment`** e relê o status; `settles_transaction_id` único garante uma saída por venda.
 
+## Contrato de rotas
+
+O contrato canônico de rotas vive em `internal_docs/rotas.md` — o que cada endpoint recebe, devolve, quem acessa e quais erros RNV pode retornar. **Antes de implementar qualquer rota, consulte esse documento.** Em conflito com o código, `rotas.md` vence e você me avisa. Os códigos de erro em si estão em `internal_docs/catalogo-de-erros.md`.
+
 ## Autenticação
 
 - **público** (bypass): `/`, `/health_check`, `POST /clients`.

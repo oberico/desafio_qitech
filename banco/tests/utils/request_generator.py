@@ -20,8 +20,16 @@ class RequestGenerator:
     def delete(self, path: str, headers: dict = None) -> tuple:
         return self._send("DELETE", path, headers=headers)
 
+    def request_with_headers(self, method: str, path: str, body: dict = None, headers: dict = None) -> tuple:
+        response = self._request(method, path, body=body, headers=headers)
+        return response.status_code, self._parse(response), response.headers
+
     def _send(self, method: str, path: str, body: dict = None, headers: dict = None, params: dict = None) -> tuple:
-        response = requests.request(
+        response = self._request(method, path, body=body, headers=headers, params=params)
+        return response.status_code, self._parse(response)
+
+    def _request(self, method: str, path: str, body: dict = None, headers: dict = None, params: dict = None):
+        return requests.request(
             method,
             f"{self.base_url}{path}",
             json=body,
@@ -29,7 +37,6 @@ class RequestGenerator:
             params=params,
             timeout=self.timeout,
         )
-        return response.status_code, self._parse(response)
 
     @staticmethod
     def _parse(response) -> dict:

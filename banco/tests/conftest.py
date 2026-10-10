@@ -18,7 +18,7 @@ def api_is_up(api_url) -> None:
     try:
         requests.get(f"{api_url}/health_check", timeout=5)
     except requests.exceptions.RequestException:
-        pytest.exit(f"could not reach the banco API at {api_url}; run `docker compose up` first", returncode=1)
+        pytest.exit(f"could not reach the banco API at {api_url}; run `docker compose up -d` first", returncode=1)
 
 
 @pytest.fixture(scope="session")

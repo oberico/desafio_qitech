@@ -1,6 +1,9 @@
 services:
   banco-db:
     build: ./banco/database
+    pull_policy: build
+    tmpfs:
+      - /var/lib/postgresql/data
     environment:
       POSTGRES_USER: ${BANCO_DB_USER:-rnv}
       POSTGRES_PASSWORD: ${BANCO_DB_PASSWORD:-rnv}
@@ -15,6 +18,9 @@ services:
 
   transferencias-db:
     build: ./transferencias/database
+    pull_policy: build
+    tmpfs:
+      - /var/lib/postgresql/data
     environment:
       POSTGRES_USER: ${TRANSF_DB_USER:-rnv}
       POSTGRES_PASSWORD: ${TRANSF_DB_PASSWORD:-rnv}
@@ -29,29 +35,25 @@ services:
 
   banco-api:
     build: ./banco
-    command: uvicorn src.app:application --host 0.0.0.0 --port 8001 --reload
+    pull_policy: build
     environment:
       DATABASE_URL: postgresql://${BANCO_DB_USER:-rnv}:${BANCO_DB_PASSWORD:-rnv}@banco-db:5432/${BANCO_DB_NAME:-banco}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
     ports:
       - "${BANCO_API_PORT:-8001}:8001"
-    volumes:
-      - ./banco/src:/app/src
     depends_on:
       banco-db:
         condition: service_healthy
 
   transferencias-api:
     build: ./transferencias
-    command: uvicorn src.app:application --host 0.0.0.0 --port 8002 --reload
+    pull_policy: build
     environment:
       DATABASE_URL: postgresql://${TRANSF_DB_USER:-rnv}:${TRANSF_DB_PASSWORD:-rnv}@transferencias-db:5432/${TRANSF_DB_NAME:-transferencias}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
       BANK_API_URL: http://banco-api:8001
     ports:
       - "${TRANSF_API_PORT:-8002}:8002"
-    volumes:
-      - ./transferencias/src:/app/src
     depends_on:
       transferencias-db:
         condition: service_healthy

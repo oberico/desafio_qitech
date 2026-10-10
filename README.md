@@ -51,22 +51,43 @@ O `requirements-dev.txt` da raiz instala `banco/requirements.txt` + `transferenc
 **3. Levantar os serviços**
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
-A primeira vez demora (build das imagens). Isso levanta 4 containers:
+Os containers são **efêmeros** (veja [Containers efêmeros](#containers-efêmeros-como-atualizar)): o `up -d` sempre reconstrói as imagens (`pull_policy: build`), então **não precisa de `--build`**. A primeira vez demora (build das imagens); nas próximas, o cache de camadas do Docker deixa o build rápido (~8 s sem mudanças). Isso levanta 4 containers:
 - **banco-db** (PostgreSQL na porta 5434)
 - **banco-api** (FastAPI na porta 8001)
 - **transferencias-db** (PostgreSQL na porta 5433)
 - **transferencias-api** (FastAPI na porta 8002)
 
-Espere os 4 ficarem `healthy`/Up. O `.env` é opcional (há defaults); se quiser personalizar, copie o `.env.example`.
+Espere os 4 ficarem `healthy` (confira com `docker compose ps`, leva ~30 s). O `.env` é opcional (há defaults); se quiser personalizar, copie o `.env.example`.
 
 **4. Conferir o health check** (veja abaixo)
 
 **5. Rodar os testes** com `pytest` na **raiz**, com o venv ativo (veja [Como Testar](#como-testar)).
 
-Se mudar o schema (`database.sql`): `docker compose down -v && docker compose up --build`.
+Mudou o schema (`database.sql`) ou quer o banco limpo: `docker compose down && docker compose up -d`. Os bancos não têm volume, então o `up` recria tudo do zero.
+
+### Containers efêmeros: como atualizar
+
+O compose **não monta volumes**: o código fica dentro da imagem e a API não roda com `--reload`. Editar `src/` no computador **não muda** o que o container serve até a imagem ser reconstruída, e `docker compose up -d` faz isso sempre. Os dois bancos usam `tmpfs` em `/var/lib/postgresql/data`: os dados vivem só na vida do container (na RAM, o que é irrelevante para este volume). A cada banco novo, o `database.sql` roda de novo, com o seed dos enumeradores e de `payment_method` (`pix`/`boleto`/`card`).
+
+| Situação | Comando |
+|----------|---------|
+| Mudei código e quero manter os dados dos bancos | `docker compose up -d` (reconstrói e recria só o que mudou) |
+| Quero tudo do zero (imagem nova + bancos vazios) | `docker compose down && docker compose up -d` |
+| Reiniciar só uma API, mantendo o banco | `docker compose restart transferencias-api` (ou `banco-api`) |
+| Ver logs | `docker compose logs -f banco-api` (ou `transferencias-api`) |
+
+Avisos:
+
+- `restart` **não reconstrói a imagem**: para pegar código novo, use `docker compose up -d`.
+- `docker compose restart <db>` e `docker compose stop`/`start` **também zeram o banco** (o `tmpfs` some quando o container para). Para reiniciar só uma API sem perder dados, reinicie a API, nunca o banco.
+- Nunca é preciso `down -v` (não há volume) nem `--build`.
+
+Fluxo depois de mudar `src/`: `docker compose up -d`, esperar `healthy` e então `pytest`.
+
+Dica opcional: se você rodou versões antigas do projeto, podem sobrar volumes do Docker sem uso. Liste com `docker volume ls -f dangling=true` e remova com `docker volume prune`. Atenção: o `prune` remove **todos** os volumes sem container, de qualquer projeto; só rode se não houver dado que você queira manter.
 
 ### Testar Health Check
 
@@ -192,13 +213,13 @@ Para detalhes completos, leia [`CLAUDE.md`](./CLAUDE.md).
 
 ## Como Testar
 
-Os testes rodam **na sua máquina** (usando o venv da raiz), contra as APIs que estão de pé no Docker. Toda vez: containers de pé (em outro terminal), venv ativo (`(.venv)` no prompt) e, a partir da **raiz**:
+Os testes rodam **na sua máquina** (usando o venv da raiz), contra as APIs que estão de pé no Docker. Toda vez: containers de pé (`docker compose up -d`; depois de editar `src/`, suba de novo para reconstruir a imagem, senão o teste roda contra o código antigo), venv ativo (`(.venv)` no prompt) e, a partir da **raiz**:
 
 ```bash
 pytest
 ```
 
-Se a API não estiver de pé, a suíte aborta com a mensagem pedindo `docker compose up`.
+Se a API não estiver de pé, a suíte aborta com a mensagem pedindo `docker compose up -d`.
 
 O `pytest` na raiz roda `banco` e `transferencias` em sequência, imprimindo `=== banco ===` e `=== transferencias ===`. Isso é de propósito: os dois serviços têm um pacote `tests` com o mesmo nome, então o `conftest.py` da raiz roda cada serviço em um processo separado. A saída fica assim (contagens de hoje, com a API de pé):
 
@@ -233,10 +254,12 @@ Testes:
 ## Problemas comuns
 
 - **`ModuleNotFoundError` ou `pytest: command not found`** → o venv não está ativado. Confira se o prompt mostra `(.venv)`; se não, rode `source .venv/bin/activate` na raiz (Windows: veja os comandos acima).
-- **`could not reach the ... API ... run docker compose up first`** → os containers não estão de pé. Rode `docker compose up --build` e espere ficarem `healthy`.
+- **`could not reach the ... API ... run docker compose up first`** → os containers não estão de pé. Rode `docker compose up -d` e espere ficarem `healthy` (`docker compose ps`).
 - **Porta ocupada (8001/8002/5433/5434)** → outra instância ou containers antigos. Rode `docker compose down` e suba de novo.
 - **Criou venv dentro de `banco/` ou `transferencias/`** → apague (`rm -rf banco/.venv transferencias/.venv`) e use o `.venv` da raiz.
-- **Mudou o schema do banco e nada mudou** → o `database.sql` só roda na criação do volume. Rode `docker compose down -v && docker compose up --build`.
+- **Mudou o schema do banco e nada mudou** → o `database.sql` só roda quando o container do banco é criado. Rode `docker compose down && docker compose up -d` (o banco é efêmero, volta do zero).
+- **Mudei o código e o comportamento não mudou** → o container serve o código da imagem, sem `--reload`. Rode `docker compose up -d` para reconstruir; `restart` não basta.
+- **Os dados sumiram depois de `restart`/`stop` no banco** → esperado: o banco é `tmpfs` e zera sempre que o container para. Veja [Containers efêmeros](#containers-efêmeros-como-atualizar).
 
 ---
 
