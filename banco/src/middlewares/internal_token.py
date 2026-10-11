@@ -2,7 +2,7 @@ import hmac
 
 from fastapi import FastAPI, Request
 
-from constants import INTERNAL_ROUTE_PREFIX, INTERNAL_TOKEN
+from constants import INTERNAL_ROUTE_PREFIXES, INTERNAL_TOKEN
 from errors.custom_errors import ForbiddenNotInternal
 from errors.handlers import qi_exception_to_response
 
@@ -18,7 +18,7 @@ def is_valid_internal_token(received_token: str) -> bool:
 def register_internal_token_middleware(application: FastAPI) -> None:
     @application.middleware("http")
     async def check_internal_token(request: Request, call_next):
-        if not request.url.path.startswith(INTERNAL_ROUTE_PREFIX):
+        if not request.url.path.startswith(INTERNAL_ROUTE_PREFIXES):
             return await call_next(request)
 
         if not is_valid_internal_token(request.headers.get(INTERNAL_TOKEN_HEADER)):
