@@ -52,7 +52,8 @@ services:
       DATABASE_URL: postgresql://${TRANSF_DB_USER:-rnv}:${TRANSF_DB_PASSWORD:-rnv}@transferencias-db:5432/${TRANSF_DB_NAME:-transferencias}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
       BANK_API_URL: http://banco-api:8001
-      INTERBANK_API_URL: http://interbank-mock:8003
+      INTERBANK_API_URL: http://external-mocks:8003
+      INTERBANK_TIMEOUT_SECONDS: 5
     ports:
       - "${TRANSF_API_PORT:-8002}:8002"
     depends_on:
@@ -60,13 +61,49 @@ services:
         condition: service_healthy
       banco-api:
         condition: service_started
-      interbank-mock:
+      external-mocks:
         condition: service_healthy
 
-  interbank-mock:
-    build: ./interbank-mock
+  external-mocks:
+    build: ./external-mocks
     pull_policy: build
     environment:
       MOCK_TIMEOUT_SECONDS: ${MOCK_TIMEOUT_SECONDS:-30}
     ports:
-      - "${INTERBANK_MOCK_PORT:-8003}:8003"
+      - "${EXTERNAL_MOCKS_PORT:-8003}:8003"
+
+  banco-fault-proxy:
+    profiles: ["fault"]
+    image: nginx:alpine
+    volumes:
+      - ./banco/fault-proxy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      banco-api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health_check || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  transferencias-api-fault:
+    profiles: ["fault"]
+    build: ./transferencias
+    pull_policy: build
+    environment:
+      DATABASE_URL: postgresql://${TRANSF_DB_USER:-rnv}:${TRANSF_DB_PASSWORD:-rnv}@transferencias-db:5432/${TRANSF_DB_NAME:-transferencias}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
+      BANK_API_URL: http://banco-fault-proxy:8080
+      INTERBANK_API_URL: http://external-mocks:8003
+      INTERBANK_TIMEOUT_SECONDS: 5
+    ports:
+      - "${TRANSF_FAULT_API_PORT:-8012}:8002"
+    depends_on:
+      transferencias-db:
+        condition: service_healthy
+      banco-fault-proxy:
+        condition: service_healthy
+      banco-api:
+        condition: service_started
+      external-mocks:
+        condition: service_healthy
