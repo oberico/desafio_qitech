@@ -264,3 +264,36 @@ class TestLedgerTransactionCreate:
         status, response = ledger.post_transaction(refund, RandomGenerator.uuid())
         assert status == 409
         assert response["code"] == "RNV001014"
+
+    def test_concurrent_debits_never_overdraw(self, ledger, active_account):
+        receipt = PayloadGenerator.create_ledger_transaction_payload()
+        _, receipt_response = ledger.post_transaction(receipt, RandomGenerator.uuid())
+        settlement = PayloadGenerator.create_ledger_transaction_payload(
+            type="settlement",
+            settles_transaction_key=receipt_response["transaction_key"],
+            entries=[
+                {"account_code": "in_transit", "debit_minor": 10000},
+                {"account_key": active_account, "credit_minor": 10000},
+            ],
+        )
+        status, _ = ledger.post_transaction(settlement, RandomGenerator.uuid())
+        assert status == 201
+
+        payout = PayloadGenerator.create_ledger_transaction_payload(
+            type="payout",
+            entries=[
+                {"account_key": active_account, "debit_minor": 10000},
+                {"account_code": "in_transit", "credit_minor": 10000},
+            ],
+        )
+
+        def send(_):
+            return ledger.post_transaction(payout, RandomGenerator.uuid())
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(send, range(2)))
+
+        statuses = sorted(status for status, _ in results)
+        refused = [response["code"] for status, response in results if status == 422]
+        assert statuses == [201, 422]
+        assert refused == ["RNV001006"]
