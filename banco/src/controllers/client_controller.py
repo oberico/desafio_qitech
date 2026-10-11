@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 from constants import BUSINESS_TIMEZONE, SCHEMAS_DIR
 from controllers.base_controller import BaseController
-from dtos import ClientDTO
+from dtos import AuthIdentityDTO, ClientDTO
 from errors import (
     CpfAlreadyRegistered,
     EmailAlreadyRegistered,
@@ -69,6 +69,9 @@ class ClientController(BaseController):
         if client is None:
             raise InvalidClientToken()
         return client
+
+    def get_identity(self, token: str) -> dict:
+        return AuthIdentityDTO.obj_to_dict(self.authenticate(token))
 
     def get_me(self, client_id: int) -> dict:
         return ClientDTO.obj_to_dict(self.client_repository.get_by_id(client_id))

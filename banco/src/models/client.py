@@ -1,4 +1,5 @@
 from sqlalchemy import CHAR, Column, Date, DateTime, Integer, String, UniqueConstraint, func
+from sqlalchemy.orm import relationship
 
 from models.base import Base
 
@@ -19,3 +20,5 @@ class Client(Base):
         UniqueConstraint("cpf", name="client_cpf_key"),
         UniqueConstraint("email", name="client_email_key"),
     )
+
+    companies = relationship("Company", lazy="selectin", order_by="Company.id")
