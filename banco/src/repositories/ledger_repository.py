@@ -5,7 +5,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from models import Account, Entry, Transaction, TransactionStatus, TransactionStatusEvent, TransactionType
+from models import Account, AllowedTransition, Entry, Transaction, TransactionStatus, TransactionStatusEvent, TransactionType
 
 
 class LedgerRepository:
@@ -49,6 +49,27 @@ class LedgerRepository:
 
     def get_status(self, enumerator: str) -> TransactionStatus:
         return self.session.query(TransactionStatus).filter(TransactionStatus.enumerator == enumerator).one()
+
+    def is_transition_allowed(self, transaction: Transaction, to_status_enumerator: str) -> bool:
+        to_status = self.get_status(to_status_enumerator)
+        allowed = self.session.query(AllowedTransition.id).filter(
+            AllowedTransition.type_id == transaction.type_id,
+            AllowedTransition.from_status_id == transaction.status_id,
+            AllowedTransition.to_status_id == to_status.id,
+        )
+        return allowed.first() is not None
+
+    def change_status(self, transaction: Transaction, status_enumerator: str) -> None:
+        status = self.get_status(status_enumerator)
+        transaction.status = status
+        self.session.add(
+            TransactionStatusEvent(
+                transaction_id=transaction.id,
+                status_id=status.id,
+                event_datetime=datetime.now(timezone.utc),
+            )
+        )
+        self.session.flush()
 
     def create(
         self,

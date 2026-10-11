@@ -9,5 +9,6 @@ from models.company import Company
 from models.transaction_type import TransactionType
 from models.transaction_status import TransactionStatus
 from models.transaction import Transaction
+from models.allowed_transition import AllowedTransition
 from models.entry import Entry
 from models.transaction_status_event import TransactionStatusEvent

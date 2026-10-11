@@ -52,6 +52,7 @@ class LedgerController(BaseController):
         self._ensure_referenceable(payload["type"], settles or reverses)
         self._ensure_not_consumed(settles)
         self._ensure_not_consumed(reverses)
+        self._ensure_can_settle(settles)
         self._ensure_funds(legs)
 
         try:
@@ -67,6 +68,8 @@ class LedgerController(BaseController):
         except IntegrityError as error:
             self.session.rollback()
             return self._handle_conflict(error, payload, idempotency_key, request_hash)
+
+        self._settle_target(settles)
 
         transaction_dto = LedgerTransactionDTO.obj_to_dict(transaction)
         self.session.commit()
@@ -122,6 +125,17 @@ class LedgerController(BaseController):
         self.ledger_repository.lock_transaction(transaction.id)
         if self.ledger_repository.is_consumed(transaction.id):
             raise TransactionAlreadyConsumed(transaction.transaction_key)
+
+    def _ensure_can_settle(self, transaction) -> None:
+        if transaction is None or transaction.type.enumerator != TransactionType.PAYOUT:
+            return
+        if not self.ledger_repository.is_transition_allowed(transaction, TransactionStatus.SETTLED):
+            raise TransactionAlreadyConsumed(transaction.transaction_key)
+
+    def _settle_target(self, transaction) -> None:
+        if transaction is None or transaction.type.enumerator != TransactionType.PAYOUT:
+            return
+        self.ledger_repository.change_status(transaction, TransactionStatus.SETTLED)
 
     def _ensure_funds(self, legs: list) -> None:
         debits = defaultdict(int)
