@@ -60,6 +60,7 @@
 | RNV001014 | 409 | Transação já consumida ou estornada (saída única) |
 | RNV001016 | 404 | Transação referenciada inexistente |
 | RNV001024 | 422 | Idempotency-Key reusada com conteúdo diferente |
+| RNV001033 | 422 | Transação referenciada de tipo incompatível (settlement liquida `receipt`/`payout`; refund estorna `receipt`; reversal estorna `payout`) |
 
 ## Pagamento (venda)
 

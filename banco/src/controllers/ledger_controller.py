@@ -1,64 +1,63 @@
+import os
 from collections import defaultdict
 
 from sqlalchemy.exc import IntegrityError
 
+from constants import SCHEMAS_DIR
 from controllers.base_controller import BaseController
 from dtos import LedgerTransactionDTO
 from errors import (
+    AccountNotFound,
     IdempotencyKeyReused,
+    InvalidTransactionReference,
     InsufficientFunds,
-    LedgerAccountNotFound,
+    LedgerAccountNotActive,
     LedgerTransactionNotFound,
-    TransactionAlreadyReversed,
-    TransactionAlreadySettled,
+    TransactionAlreadyConsumed,
     UnbalancedEntries,
 )
-from models import TransactionStatus, TransactionType
+from models import AccountStatus, TransactionStatus, TransactionType
 from repositories import LedgerRepository
 from utils.payload_hash import payload_hash
+from utils.schema_handler import validate_json
 
+POST_LEDGER_TRANSACTION_SCHEMA = os.path.join(SCHEMAS_DIR, "post_ledger_transaction.json")
 IDEMPOTENCY_CONSTRAINT = "uq_transaction_idempotency_key"
-SETTLES_CONSTRAINT = "uq_transaction_settles"
-REVERSES_CONSTRAINT = "uq_transaction_reverses"
-
+CONSUMPTION_CONSTRAINTS = {"uq_transaction_settles", "uq_transaction_reverses"}
 BORN_PENDING = {TransactionType.PAYOUT}
+REFERENCEABLE_TYPES = {
+    TransactionType.SETTLEMENT: {TransactionType.RECEIPT, TransactionType.PAYOUT},
+    TransactionType.REFUND: {TransactionType.RECEIPT},
+    TransactionType.REVERSAL: {TransactionType.PAYOUT},
+}
 
 
 class LedgerController(BaseController):
-    def __init__(self) -> None:
-        super().__init__(__name__)
-        self.ledger_repository = LedgerRepository(self.context)
+    def __init__(self, session) -> None:
+        super().__init__(session)
+        self.ledger_repository = LedgerRepository(session)
 
-    def post_transaction(self, transaction_data: dict) -> tuple:
-        idempotency_key = transaction_data["idempotency_key"]
-        request_hash = payload_hash(self._meaningful_fields(transaction_data))
-
-        legs = self._resolve_legs(transaction_data["entries"])
-        self._ensure_balanced(legs)
-        settles = self._resolve_transaction(transaction_data.get("settles"))
-        reverses = self._resolve_transaction(transaction_data.get("reverses"))
-
-        client_debits = self._client_debits(legs)
-
-        for account_id in sorted(client_debits):
-            self.ledger_repository.lock_account(account_id)
+    def create_transaction(self, payload: dict, idempotency_key: str) -> tuple:
+        validate_json(payload, POST_LEDGER_TRANSACTION_SCHEMA)
+        request_hash = payload_hash(self._meaningful_fields(payload))
 
         existing = self.ledger_repository.get_by_idempotency_key(idempotency_key)
         if existing is not None:
             return self._replay(existing, request_hash)
 
-        for account_id in sorted(client_debits):
-            balance = self.ledger_repository.balance_of(account_id)
-            if balance < client_debits[account_id]:
-                self.session.rollback()
-                raise InsufficientFunds()
-
-        type_enumerator = transaction_data["type"].lower()
+        legs = self._resolve_legs(payload["entries"])
+        self._ensure_balanced(legs)
+        settles = self._resolve_transaction(payload.get("settles_transaction_key"))
+        reverses = self._resolve_transaction(payload.get("reverses_transaction_key"))
+        self._ensure_referenceable(payload["type"], settles or reverses)
+        self._ensure_not_consumed(settles)
+        self._ensure_not_consumed(reverses)
+        self._ensure_funds(legs)
 
         try:
             transaction = self.ledger_repository.create(
-                type_enumerator=type_enumerator,
-                status_enumerator=self._initial_status(type_enumerator),
+                type_enumerator=payload["type"],
+                status_enumerator=self._initial_status(payload["type"]),
                 idempotency_key=idempotency_key,
                 payload_hash=request_hash,
                 legs=legs,
@@ -67,36 +66,41 @@ class LedgerController(BaseController):
             )
         except IntegrityError as error:
             self.session.rollback()
-            return self._handle_conflict(error, idempotency_key, request_hash)
+            return self._handle_conflict(error, payload, idempotency_key, request_hash)
 
         transaction_dto = LedgerTransactionDTO.obj_to_dict(transaction)
         self.session.commit()
         return transaction_dto, True
 
     def _resolve_legs(self, entries: list) -> list:
-        legs = []
-        for entry in entries:
-            account = self._resolve_account(entry)
-            legs.append(
-                {
-                    "account": account,
-                    "debit_minor": int(entry.get("debit_minor", 0)),
-                    "credit_minor": int(entry.get("credit_minor", 0)),
-                }
-            )
-        return legs
+        return [
+            {
+                "account": self._resolve_account(entry),
+                "debit_minor": entry.get("debit_minor", 0),
+                "credit_minor": entry.get("credit_minor", 0),
+            }
+            for entry in entries
+        ]
 
     def _resolve_account(self, entry: dict):
         if "account_code" in entry:
-            account = self.ledger_repository.get_account_by_code(entry["account_code"])
             reference = entry["account_code"]
+            account = self.ledger_repository.get_account_by_code(reference)
         else:
-            account = self.ledger_repository.get_account_by_key(entry["account_key"])
             reference = entry["account_key"]
+            account = self.ledger_repository.get_account_by_key(reference)
 
         if account is None:
-            raise LedgerAccountNotFound(reference)
+            raise AccountNotFound(reference)
+        if account.status.enumerator != AccountStatus.ACTIVE:
+            raise LedgerAccountNotActive(reference)
         return account
+
+    def _ensure_balanced(self, legs: list) -> None:
+        total_debit = sum(leg["debit_minor"] for leg in legs)
+        total_credit = sum(leg["credit_minor"] for leg in legs)
+        if total_debit != total_credit:
+            raise UnbalancedEntries(total_debit, total_credit)
 
     def _resolve_transaction(self, transaction_key: str):
         if transaction_key is None:
@@ -106,19 +110,29 @@ class LedgerController(BaseController):
             raise LedgerTransactionNotFound(transaction_key)
         return transaction
 
-    def _ensure_balanced(self, legs: list) -> None:
-        total_debit = sum(leg["debit_minor"] for leg in legs)
-        total_credit = sum(leg["credit_minor"] for leg in legs)
-        if len(legs) < 2 or total_debit != total_credit:
-            raise UnbalancedEntries(total_debit, total_credit)
+    def _ensure_referenceable(self, type_enumerator: str, target) -> None:
+        if target is None:
+            return
+        if target.type.enumerator not in REFERENCEABLE_TYPES[type_enumerator]:
+            raise InvalidTransactionReference(target.transaction_key, target.type.enumerator)
 
-    def _client_debits(self, legs: list) -> dict:
+    def _ensure_not_consumed(self, transaction) -> None:
+        if transaction is None:
+            return
+        self.ledger_repository.lock_transaction(transaction.id)
+        if self.ledger_repository.is_consumed(transaction.id):
+            raise TransactionAlreadyConsumed(transaction.transaction_key)
+
+    def _ensure_funds(self, legs: list) -> None:
         debits = defaultdict(int)
         for leg in legs:
-            account = leg["account"]
-            if account.company_id is not None and leg["debit_minor"] > 0:
-                debits[account.id] += leg["debit_minor"]
-        return dict(debits)
+            if leg["account"].company_id is not None and leg["debit_minor"] > 0:
+                debits[leg["account"].id] += leg["debit_minor"]
+
+        for account_id in sorted(debits):
+            self.ledger_repository.lock_account(account_id)
+            if self.ledger_repository.balance_of(account_id) < debits[account_id]:
+                raise InsufficientFunds()
 
     def _initial_status(self, type_enumerator: str) -> str:
         if type_enumerator in BORN_PENDING:
@@ -127,40 +141,31 @@ class LedgerController(BaseController):
 
     def _replay(self, existing, request_hash: str) -> tuple:
         if existing.payload_hash != request_hash:
-            self.session.rollback()
             raise IdempotencyKeyReused(existing.idempotency_key)
+        return LedgerTransactionDTO.obj_to_dict(existing), False
 
-        transaction_dto = LedgerTransactionDTO.obj_to_dict(existing)
-        self.session.rollback()
-        return transaction_dto, False
-
-    def _handle_conflict(self, error: IntegrityError, idempotency_key: str, request_hash: str) -> tuple:
+    def _handle_conflict(self, error: IntegrityError, payload: dict, idempotency_key: str, request_hash: str) -> tuple:
         constraint = self.ledger_repository.violated_constraint(error)
-
         if constraint == IDEMPOTENCY_CONSTRAINT:
             existing = self.ledger_repository.get_by_idempotency_key(idempotency_key)
             return self._replay(existing, request_hash)
-        if constraint == SETTLES_CONSTRAINT:
-            raise TransactionAlreadySettled()
-        if constraint == REVERSES_CONSTRAINT:
-            raise TransactionAlreadyReversed()
+        if constraint in CONSUMPTION_CONSTRAINTS:
+            raise TransactionAlreadyConsumed(payload.get("settles_transaction_key") or payload.get("reverses_transaction_key"))
         raise error
 
-    def _meaningful_fields(self, transaction_data: dict) -> dict:
+    def _meaningful_fields(self, payload: dict) -> dict:
         entries = sorted(
-            (
-                (entry.get("account_code") or "").lower(),
-                (entry.get("account_key") or "").lower(),
-                int(entry.get("debit_minor", 0)),
-                int(entry.get("credit_minor", 0)),
-            )
-            for entry in transaction_data["entries"]
+            [
+                entry.get("account_code", "").lower(),
+                entry.get("account_key", "").lower(),
+                entry.get("debit_minor", 0),
+                entry.get("credit_minor", 0),
+            ]
+            for entry in payload["entries"]
         )
-        settles = transaction_data.get("settles")
-        reverses = transaction_data.get("reverses")
         return {
-            "type": transaction_data["type"].lower(),
-            "settles": settles.lower() if settles else None,
-            "reverses": reverses.lower() if reverses else None,
-            "entries": [list(entry) for entry in entries],
+            "type": payload["type"],
+            "settles_transaction_key": (payload.get("settles_transaction_key") or "").lower(),
+            "reverses_transaction_key": (payload.get("reverses_transaction_key") or "").lower(),
+            "entries": entries,
         }

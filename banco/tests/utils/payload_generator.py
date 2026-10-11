@@ -21,3 +21,15 @@ class PayloadGenerator:
         }
         payload.update(overrides)
         return payload
+
+    @staticmethod
+    def create_ledger_transaction_payload(**overrides) -> dict:
+        payload = {
+            "type": "receipt",
+            "entries": [
+                {"account_code": "reserves", "debit_minor": 10000},
+                {"account_code": "in_transit", "credit_minor": 10000},
+            ],
+        }
+        payload.update(overrides)
+        return payload 

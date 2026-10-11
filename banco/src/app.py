@@ -13,7 +13,8 @@ from middlewares import (
     register_request_logger_middleware,
     register_session_manager_middleware,
 )
-from resources import AccountResource, AuthResource, ClientResource, CompanyResource, HealthCheckResource
+
+from resources import AccountResource, AuthResource, ClientResource, CompanyResource, HealthCheckResource, LedgerTransactionResource
 from utils.logger import setup_logging
 
 setup_logging()
@@ -56,6 +57,8 @@ account_resource = AccountResource()
 auth_resource = AuthResource()
 client_resource = ClientResource()
 company_resource = CompanyResource()
+ledger_transaction_resource = LedgerTransactionResource()
+
 
 application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
 application.add_api_route("/health_check", health_check_resource.on_get_health_check, methods=["GET"])
@@ -63,6 +66,7 @@ application.add_api_route("/clients", client_resource.on_post, methods=["POST"])
 application.add_api_route("/me", client_resource.on_get_me, methods=["GET"])
 application.add_api_route("/companies", company_resource.on_post, methods=["POST"])
 application.add_api_route("/companies/{company_key}", company_resource.on_get_by_key, methods=["GET"])
+application.add_api_route("/ledger/transactions", ledger_transaction_resource.on_post, methods=["POST"])
 application.add_api_route("/companies/{company_key}/accounts", account_resource.on_post, methods=["POST"])
 application.add_api_route("/accounts/{account_key}", account_resource.on_get_by_key, methods=["GET"])
 application.add_api_route("/accounts/{account_key}/close", account_resource.on_post_close, methods=["POST"])
