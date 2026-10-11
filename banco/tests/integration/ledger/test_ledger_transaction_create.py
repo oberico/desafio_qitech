@@ -1,7 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
 
-import pytest
-
 from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.random_generator import RandomGenerator
 
@@ -55,13 +53,36 @@ class TestLedgerTransactionCreate:
         assert status == 404
         assert response["code"] == "RNV001021"
 
-    @pytest.mark.skip(reason="depends on the account routes")
-    def test_refuses_inactive_account(self, ledger):
-        ...
+    def test_refuses_inactive_account(self, ledger, accounts, open_account, client_token):
+        account_key = open_account(client_token)
+        accounts.close(account_key, client_token)
 
-    @pytest.mark.skip(reason="depends on the account routes")
-    def test_refuses_insufficient_funds(self, ledger):
-        ...
+        receipt = PayloadGenerator.create_ledger_transaction_payload()
+        _, receipt_response = ledger.post_transaction(receipt, RandomGenerator.uuid())
+
+        settlement = PayloadGenerator.create_ledger_transaction_payload(
+            type="settlement",
+            settles_transaction_key=receipt_response["transaction_key"],
+            entries=[
+                {"account_code": "in_transit", "debit_minor": 10000},
+                {"account_key": account_key, "credit_minor": 10000},
+            ],
+        )
+        status, response = ledger.post_transaction(settlement, RandomGenerator.uuid())
+        assert status == 422
+        assert response["code"] == "RNV001005"
+
+    def test_refuses_insufficient_funds(self, ledger, active_account):
+        payload = PayloadGenerator.create_ledger_transaction_payload(
+            type="payout",
+            entries=[
+                {"account_key": active_account, "debit_minor": 10000},
+                {"account_code": "in_transit", "credit_minor": 10000},
+            ],
+        )
+        status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
+        assert status == 422
+        assert response["code"] == "RNV001006"
 
     def test_refuses_unknown_referenced_transaction(self, ledger):
         payload = PayloadGenerator.create_ledger_transaction_payload(
