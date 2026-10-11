@@ -11,3 +11,11 @@ class ClientRequests:
     def get_me(self, token: str = None) -> tuple:
         headers = {"Authorization": f"Bearer {token}"} if token else None
         return self.api.get("/me", headers=headers)
+
+    def get_auth_me(self, token: str = None, internal_token: str = None) -> tuple:
+        headers = {}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        if internal_token:
+            headers["INTERNAL-TOKEN"] = internal_token
+        return self.api.get("/auth/me", headers=headers)

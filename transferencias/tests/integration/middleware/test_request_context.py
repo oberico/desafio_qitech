@@ -10,7 +10,7 @@ REQUEST_ID_HEADER = "X-Request-ID"
 ROUTES = {
     "health_check": ("GET", "/health_check", None, None),
     "not_found": ("GET", "/route-that-does-not-exist", None, None),
-    "bad_request": ("POST", "/payments", {}, {"Idempotency-Key": RandomGenerator.uuid()}),
+    "unauthorized": ("POST", "/payments", {}, {"Idempotency-Key": RandomGenerator.uuid()}),
 }
 
 SAFE_IDS = {

@@ -29,21 +29,26 @@ jobs:
 
       - name: Build and start containers
         id: build
-        run: docker compose up -d --build transferencias-db transferencias-api
+        run: docker compose up -d --build
 
-      - name: Wait for API to be healthy
+      - name: Wait for APIs to be healthy
         id: health
         run: |
-          url=http://localhost:8002/health_check
-          for attempt in $(seq 1 30); do
-            if curl -fsS "$url" > /dev/null; then
-              echo "healthy: $url"
-              exit 0
+          for url in http://localhost:8001/health_check http://localhost:8002/health_check; do
+            healthy=false
+            for attempt in $(seq 1 30); do
+              if curl -fsS "$url" > /dev/null; then
+                echo "healthy: $url"
+                healthy=true
+                break
+              fi
+              sleep 2
+            done
+            if [ "$healthy" != "true" ]; then
+              echo "not healthy after 60s: $url"
+              exit 1
             fi
-            sleep 2
           done
-          echo "not healthy after 60s: $url"
-          exit 1
 
       - name: Run pytest (transferencias)
         id: pytest

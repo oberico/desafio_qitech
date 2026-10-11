@@ -40,6 +40,6 @@ class UnderageClient(QIException):
     def __init__(self) -> None:
         title = "Underage Client"
         http_status = 422
-        description = "The client must be at least 18 years old."
-        translation = "A pessoa precisa ter pelo menos 18 anos."
+        description = "The client must be at least 18 years old to register."
+        translation = "É necessário ter 18 anos ou mais para se registrar."
         super().__init__(title, self.code, http_status, description, translation)

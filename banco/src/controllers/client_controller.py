@@ -1,10 +1,11 @@
 import os
-from datetime import date
+from datetime import date, datetime
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
-from constants import SCHEMAS_DIR
+from constants import BUSINESS_TIMEZONE, SCHEMAS_DIR
 from controllers.base_controller import BaseController
-from dtos import ClientDTO
+from dtos import AuthIdentityDTO, ClientDTO
 from errors import (
     CpfAlreadyRegistered,
     EmailAlreadyRegistered,
@@ -39,7 +40,7 @@ class ClientController(BaseController):
 
         if not is_valid_cpf(payload["cpf"]):
             raise InvalidCpf(payload["cpf"])
-        if age_on(birthdate, date.today()) < MINIMUM_AGE:
+        if age_on(birthdate, self._today()) < MINIMUM_AGE:
             raise UnderageClient()
         if self.client_repository.exists_with_cpf(payload["cpf"]):
             raise CpfAlreadyRegistered()
@@ -69,6 +70,9 @@ class ClientController(BaseController):
             raise InvalidClientToken()
         return client
 
+    def get_identity(self, token: str) -> dict:
+        return AuthIdentityDTO.obj_to_dict(self.authenticate(token))
+
     def get_me(self, client_id: int) -> dict:
         return ClientDTO.obj_to_dict(self.client_repository.get_by_id(client_id))
 
@@ -78,6 +82,10 @@ class ClientController(BaseController):
             birthdate = date.fromisoformat(value)
         except ValueError:
             raise InvalidSchema(f"birthdate: {value} is not a valid date")
-        if birthdate > date.today():
-            raise InvalidSchema(f"birthdate: {value} is in the future")
+        if birthdate > ClientController._today():
+            raise InvalidSchema(f"birthdate: {value} cannot be in the future")
         return birthdate
+
+    @staticmethod
+    def _today() -> date:
+        return datetime.now(ZoneInfo(BUSINESS_TIMEZONE)).date()
