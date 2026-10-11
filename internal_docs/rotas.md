@@ -114,6 +114,33 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 - **`POST /internal/settlements`:** libera os `payment` em `held` com `release_at <= as_of`. A chave determinística (`settlement:<payment_key>`) e o `FOR UPDATE` na linha do `payment` continuam valendo; rodar de novo com o mesmo `as_of` é no-op.
 - **`POST /internal/payouts/reconcile`:** `as_of` é o "agora" que decide se a próxima tentativa/backoff do payout já venceu (`last_attempt_at` + espera) e o `now` gravado ao registrar a `payout_attempt`.
 
+**`POST /internal/settlements` — contrato completo.**
+
+Resposta `200`:
+
+```json
+{"as_of": "2026-10-12T15:00:00+00:00", "settled": ["<payment_key>"], "deferred": ["<payment_key>"]}
+```
+
+- `as_of`: o instante efetivamente usado (o enviado, ou o relógio do servidor se ausente), ISO 8601.
+- `settled`: `payment_key` dos payments liberados neste run.
+- `deferred`: payments vencidos (`release_at <= as_of`) que **continuam `held`** porque o Banco recusou por regra (ex.: conta do lojista bloqueada ou encerrada, `RNV001005`) ou estava indisponível. O próximo run tenta de novo.
+- Payment que, ao ser relido, já não está `held` (já liberado ou estornado) não aparece em nenhuma lista. Não há lista de erros por item.
+
+Processamento:
+
+- Cada payment roda em **transação própria**: um lojista com problema não trava os demais.
+- A tarifa vem **sempre do snapshot** do payment: `fee = (amount_minor * fee_bps + 9999) // 10000`, `net = amount_minor - fee`.
+- Lançamento no Banco com `idempotency_key` `settlement:<payment_key>`: D `in_transit` net, D `in_transit` fee, C conta do lojista net, C `revenue` fee. Pernas de valor 0 são **omitidas** (o Banco exige >= 1 por perna; ex.: `amount_minor` 1 com 99 bps dá fee 1 e net 0, então só existem as pernas de fee).
+
+Erros do job:
+
+- `403 RNV000002`: sem `INTERNAL-TOKEN`.
+- `400 RNV000001`: `as_of` inválido.
+- Falhas do Banco por item **não** viram erro HTTP: o payment vai para `deferred`.
+
+Idempotência: rodar de novo é seguro. A chave é determinística; o Banco devolve o lançamento existente e o payment é levado a `settled`.
+
 O mock interbancário que o reconcile chama (`POST /interbank/transfers` no `external-mocks`) está em `mocks-externos.md`.
 
 ### Admin
