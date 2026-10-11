@@ -88,13 +88,13 @@ class InvalidClientToken(QIException):
         translation = "O token de autorização está ausente, é inválido ou foi revogado."
         super().__init__(title, self.code, http_status, description, translation)
 
-#
-# class BankUnavailable(QIException):
-#     code = "RNV001017"
-#
-#     def __init__(self) -> None:
-#         title = "Bank Unavailable"
-#         http_status = 503
-#         description = "The bank service is unavailable; nothing was recorded."
-#         translation = "O Banco está indisponível; nada foi gravado."
-#         super().__init__(title, self.code, http_status, description, translation)
+
+class BankUnavailable(QIException):
+    code = "RNV001017"
+
+    def __init__(self) -> None:
+        title = "Bank Unavailable"
+        http_status = 503
+        description = "The bank service is unavailable; nothing was recorded."
+        translation = "O Banco está indisponível; nada foi gravado."
+        super().__init__(title, self.code, http_status, description, translation)
