@@ -10,6 +10,9 @@ class AccountRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def list_internal(self) -> list:
+        return self.session.query(Account).filter(Account.company_id.is_(None)).order_by(Account.id).all()
+
     def get_by_key_and_client(self, account_key: str, client_id: int) -> Account:
         return (
             self.session.query(Account)

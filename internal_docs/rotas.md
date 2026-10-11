@@ -52,6 +52,7 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 
 | Prioridade | Método | Rota | Acesso | Justificativa |
 |---|---|---|---|---|
+| 1 | GET | `/internal/internal-accounts` | serviço | Lista as contas internas (`reserves`, `in_transit`, `revenue`) com `account_key`, `code`, `class`, `normal_balance` e `status`. Serve para o ledger e os testes referenciarem a conta pelo `account_key` real, sem acessar o banco. |
 | 3 | POST | `/internal/accounts/{account_key}/block` | serviço | Bloqueia conta; `409 RNV001009` se não active. |
 | 3 | POST | `/internal/accounts/{account_key}/unblock` | serviço | Desbloqueia; `409 RNV001010` se não blocked. |
 

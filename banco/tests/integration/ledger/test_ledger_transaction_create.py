@@ -56,6 +56,34 @@ class TestLedgerTransactionCreate:
         assert status == 404
         assert response["code"] == "RNV001021"
 
+    @pytest.mark.parametrize("code", ["reserves", "in_transit", "revenue"])
+    @pytest.mark.parametrize("side", ["debit_minor", "credit_minor"])
+    def test_refuses_internal_account_by_key(self, ledger, internal_account_keys, code, side):
+        other_side = "credit_minor" if side == "debit_minor" else "debit_minor"
+        other_code = "in_transit" if code != "in_transit" else "reserves"
+        payload = PayloadGenerator.create_ledger_transaction_payload(
+            entries=[
+                {"account_key": internal_account_keys[code], side: 10000},
+                {"account_code": other_code, other_side: 10000},
+            ]
+        )
+        status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
+        assert status == 422
+        assert response["code"] == "RNV001034"
+
+    @pytest.mark.parametrize("side", ["debit_minor", "credit_minor"])
+    def test_refuses_client_account_code(self, ledger, side):
+        other_side = "credit_minor" if side == "debit_minor" else "debit_minor"
+        payload = PayloadGenerator.create_ledger_transaction_payload(
+            entries=[
+                {"account_code": "business", side: 10000},
+                {"account_code": "in_transit", other_side: 10000},
+            ]
+        )
+        status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
+        assert status == 400
+        assert response["code"] == "RNV000001"
+
     def test_refuses_inactive_account(self, ledger, accounts, open_account, client_token):
         account_key = open_account(client_token)
         accounts.close(account_key, client_token)

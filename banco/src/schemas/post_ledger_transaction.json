@@ -20,7 +20,7 @@
       "items": {
         "type": "object",
         "properties": {
-          "account_code": {"type": "string", "minLength": 1},
+          "account_code": {"type": "string", "enum": ["reserves", "in_transit", "revenue"]},
           "account_key": {"type": "string", "pattern": "^[0-9a-fA-F-]{36}$"},
           "debit_minor": {"type": "integer", "minimum": 1},
           "credit_minor": {"type": "integer", "minimum": 1}

@@ -72,4 +72,5 @@ application.add_api_route("/accounts/{account_key}", account_resource.on_get_by_
 application.add_api_route("/accounts/{account_key}/close", account_resource.on_post_close, methods=["POST"])
 application.add_api_route("/internal/accounts/{account_key}/block", account_resource.on_post_block, methods=["POST"])
 application.add_api_route("/internal/accounts/{account_key}/unblock", account_resource.on_post_unblock, methods=["POST"])
+application.add_api_route("/internal/internal-accounts", account_resource.on_get_internal, methods=["GET"])
 application.add_api_route("/auth/me", auth_resource.on_get_me, methods=["GET"])
