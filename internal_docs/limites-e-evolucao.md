@@ -1,0 +1,166 @@
+# Limites conhecidos e caminho de evolução
+
+Status: vivo; atualize a coluna de status quando um degrau for aplicado.
+
+> Escopo: a arquitetura atual (dois serviços, HTTP síncrono + idempotência), que é uma decisão consciente da RFC (§1 "Arquitetura" e §6 "Saga, fila ou processamento assíncrono"). Este documento não discute o desenho do livro; só registra onde ele para de escalar e o que fazemos depois. Fontes: `rfc-rnv-v7.2.md`, `analise-defesa-rfc.md` §4.5, `catalogo-de-erros.md`, `rotas.md`, `mocks-externos.md` e o código citado em cada seção.
+
+## 1. Resumo
+
+- **Sustentável hoje:** o volume de um bootcamp e de um produto em estágio inicial. O fluxo é simples de raciocinar, de testar e de defender.
+- **Degrada com volume:** a conexão do banco do Transferências fica presa durante a chamada HTTP ao Banco, e a disponibilidade do Transferências depende da do Banco.
+- **O que não depende de escala:** a corretude do dinheiro. Ela vem da chave determinística no lançamento, do `UNIQUE` e do lock `FOR UPDATE` no débito. Lento ou fora do ar, o sistema pode recusar ou atrasar, mas não lança duas vezes nem deixa saldo negativo.
+- **O pior caso real é o "resultado desconhecido":** um timeout no `POST /payments` não prova que o dinheiro não se moveu (seção 2).
+- **Lacuna aberta:** não existe reconciliação periódica Transferências × Banco. É o primeiro item a construir se o produto crescer.
+
+## 2. O que acontece quando o Banco não responde no `POST /payments`
+
+Pergunta: "rollback ou resposta negativa?" Resposta: **as duas coisas**, e nenhuma delas diz que o dinheiro não se moveu.
+
+Fluxo atual (`transferencias/src/controllers/payment_controller.py`, `create` e `_post_receipt`):
+
+1. `try_create` faz o `INSERT` do `payment` (`flush`), com `idempotency_key` e `payload_hash`. É a primeira escrita (RFC §5.2).
+2. `_post_receipt` chama `POST /ledger/transactions` no Banco com a chave `receipt:<company_key>:<chave>`.
+3. Se o conector levanta `BankUnavailable` (erro de rede, timeout de `BANK_TIMEOUT_SECONDS = 5`, corpo que não é JSON, status diferente de 200/201 ou sem `transaction_key`), o controller faz `session.rollback()` e propaga.
+4. O resource devolve `503 RNV001017`.
+
+### Por que não guardamos uma linha `failed`
+
+A RFC §5.2 item 5 é explícita: **erro não fica guardado**. O rollback desfaz o `INSERT` do `payment` e a chave do cliente fica livre para nova tentativa. As razões:
+
+- `failed` só existe em `payout_status` (RFC §6, "`failed` no status do livro"). O `payment` tem `held`/`settled`/`refunded`; criar um estado só para "o Banco não respondeu" abriria transições novas (`failed` → ?) e um estado que o cliente teria de interpretar.
+- Uma linha `failed` com a chave ocupada obrigaria o retry a gerar outra chave, ou a regra "mesma chave reabre o `failed`", o que contradiz "a chave é do cliente e o banco não adivinha intenção".
+- Sem a linha, o retry com a mesma chave é uma operação nova e limpa, que reencontra o lançamento no Banco se ele existir.
+
+Consequências aceitas:
+
+| Consequência | Efeito |
+|---|---|
+| Não há rastro local da tentativa que falhou | Só o log da requisição mostra que ela existiu. |
+| A chave fica livre | O cliente retenta com a mesma `Idempotency-Key` sem atrito. |
+| O Transferências pode não saber o que o Banco fez | É o caso do próximo bloco. |
+
+### O 503 significa "resultado desconhecido", não "não aconteceu"
+
+`503 RNV001017` quer dizer: **retente com a MESMA `Idempotency-Key`**. Não quer dizer que o dinheiro com certeza não se moveu. Há dois cenários:
+
+| Cenário | Banco | Transferências | O que o retry faz |
+|---|---|---|---|
+| A. O Banco não chegou a commitar (rede caiu antes, Banco fora do ar) | sem receipt | sem `payment` | Fluxo normal: grava `payment`, lança o receipt, `201`. |
+| B. O Banco commitou o receipt, mas a resposta se perdeu (timeout de 5 s, conexão cortada) | receipt `receipt:<company_key>:<chave>` existe, `settled`, em `in_transit` | `payment` sofreu rollback, não existe | O Banco recebe a mesma chave e o mesmo `payload_hash`, devolve o lançamento existente (`200`, `_replay` em `banco/src/controllers/ledger_controller.py`). O Transferências grava o `payment` e fecha a conta. Nenhum lançamento duplicado. |
+
+Cenário B é a razão de a chave do lançamento ser determinística e derivada da chave do cliente (RFC §5.2, "As chaves dos lançamentos no Banco").
+
+### Risco: receipt órfão se o cliente nunca retentar
+
+Se no cenário B o cliente **não retentar**, sobra no Banco um receipt `settled` (D `reserves` / C `in_transit`) sem `payment` correspondente no Transferências:
+
+- **Efeito contábil:** o livro continua fechando (débito = crédito); `reserves` e `in_transit` ficam inflados pelo mesmo valor. Nenhuma conta de lojista é afetada, e ninguém recebe nem perde dinheiro. É dinheiro "recebido" sem dono no produto.
+- **Efeito de produto:** nenhum job de liberação enxerga esse valor (não há `payment` `held`), então ele fica em `in_transit` para sempre.
+- **Probabilidade:** baixa, porque exige três coisas juntas: Banco commita, resposta se perde dentro da janela de 5 s, e o cliente desiste. Cliente de gateway costuma retentar em falha (é para isso que a chave existe), mas a RFC não garante que retentem. Não tenho taxa medida; não há métrica nem dado de produção. É estimativa qualitativa.
+- **Mitigação:** reconciliação periódica Transferências × Banco (todo receipt cuja chave começa por `receipt:` sem `payment` correspondente pelo par `company_key` + chave). Corrigir com `refund` do receipt (lançamento novo, append-only) ou criar o `payment` retroativamente, por decisão de negócio.
+- **Lacuna:** **essa reconciliação não existe hoje.** A RFC fala de reconciliação para o payout (§2, passo 7), não para esse caso. Registrado como limite, não como bug.
+
+### Inconsistência: o texto do `RNV001017`
+
+O catálogo (`internal_docs/catalogo-de-erros.md`, linha do `RNV001017`) diz "Banco indisponível (nada foi gravado)", e `transferencias/src/errors/custom_errors.py` (`BankUnavailable`) diz "The bank service is unavailable; nothing was recorded." / "O Banco está indisponível; nada foi gravado."
+
+Isso é verdade **no Transferências** e impreciso no timeout: o Banco pode ter gravado o receipt (cenário B). Proposta de redação (não aplicada; catálogo e código ficam como estão até o grupo decidir):
+
+| Onde | Redação proposta |
+|---|---|
+| Catálogo | Banco indisponível ou sem resposta; nada foi gravado no Transferências, e o resultado no Banco pode ser desconhecido. Retente com a mesma `Idempotency-Key`. |
+| `description` (en) | The bank service is unavailable or did not answer in time; nothing was recorded in this service and the outcome at the bank may be unknown. Retry with the same Idempotency-Key. |
+| `translation` (pt) | O Banco está indisponível ou não respondeu a tempo; nada foi gravado neste serviço e o resultado no Banco pode ser desconhecido. Retente com a mesma Idempotency-Key. |
+
+O código `RNV001017` não muda (o catálogo diz que número é contrato estável); só o texto. Pela regra do CLAUDE.md, mudar texto de erro é decisão do grupo.
+
+## 3. Limites conhecidos
+
+### (a) Conexão do banco presa durante a chamada HTTP ao Banco
+
+- **O que é:** em `create`, a sessão abre a transação na primeira consulta (`get_method`), faz o `flush` do `payment`, chama o Banco e só então dá `commit`. A conexão do pool fica emprestada durante toda a chamada HTTP. Isso é intencional: o `INSERT` com a chave é a primeira escrita e o commit só acontece depois do receipt (RFC §5.2).
+- **Por que existe:** é o que faz o rollback desfazer tudo e liberar a chave, sem estado intermediário.
+- **Números do código:**
+  - `transferencias/src/database.py` usa `pool_size=DB_POOL_SIZE`, `max_overflow=DB_MAX_OVERFLOW` e `pool_timeout=DB_POOL_TIMEOUT_SECONDS`, lidos de `constants.py` por variável de ambiente. Padrões: 10, 10 e 3 s. Total: **10 + 10 = 20 conexões** por instância. (Antes do degrau 1b eram 5 + 10 = 15 conexões e `pool_timeout` de 30 s, padrão da biblioteca.)
+  - `transferencias/src/constants.py`: `BANK_TIMEOUT_SECONDS = float(os.environ.get("BANK_TIMEOUT_SECONDS", "5"))`, passado como `timeout=` do `requests`. Esse valor vale para conexão e para leitura **separadamente**, então o pior caso de uma chamada pode passar de 5 s (até ~10 s em teoria).
+  - Os resources são `def` síncronos; o FastAPI os roda no threadpool do Starlette, cujo limite padrão é **40 threads** (padrão da biblioteca, não configurado no repositório). O Dockerfile sobe `uvicorn` sem `--workers`, ou seja, 1 processo por instância.
+- **Conta de vazão por instância (estimativa):** cada `POST /payments` ocupa 1 conexão pelo tempo da chamada ao Banco, `T`. Vazão máxima de escrita ≈ conexões ÷ `T`.
+
+  | Cenário | `T` | Conta | Vazão máxima |
+  |---|---|---|---|
+  | Pior caso, Banco travado até o timeout | 5 s | 20 ÷ 5 | **4 pagamentos/s** |
+  | Pior caso teórico (conectar 5 s + ler 5 s) | 10 s | 20 ÷ 10 | 2 pagamentos/s |
+  | Banco saudável, `T` suposto de 50 ms (**suposição, não medida**) | 0,05 s | 20 ÷ 0,05 | até 400 pagamentos/s, teto teórico que ignora o tempo de consulta ao banco e a CPU |
+
+- **Efeito cascata:** com 20 conexões presas, qualquer outra requisição que precise do banco do Transferências (`GET /payments/{key}`, e os jobs futuros) espera uma conexão por no máximo 3 s (`DB_POOL_TIMEOUT_SECONDS`) e, ao estourar, recebe `503 RNV000006` (Service Busy). O handler em `transferencias/src/app.py` mapeia `sqlalchemy.exc.TimeoutError` para esse código; antes do degrau 1b a espera era de até 30 s e o erro caía em `500`. As 40 threads do servidor ainda excedem as 20 conexões, então até 20 requisições ficam bloqueadas esperando conexão, agora por no máximo 3 s cada, e o servidor perde capacidade para o resto nesse intervalo. `GET /health_check` não toca no banco e só sofre se as 40 threads estiverem ocupadas. `GET /auth/me` roda em thread (`run_in_threadpool` no middleware), usa a thread por até 5 s, mas não usa conexão do banco do Transferências.
+- **Quando dói:** quando o Banco fica lento (não só fora do ar). Fora do ar costuma falhar rápido (conexão recusada); lento é o pior caso porque segura recursos por 5 s.
+- **Mitigação hoje:** timeout do Banco (5 s por padrão, configurável) limita o dano; o pool falha rápido com `503 RNV000006` em vez de enfileirar; a idempotência torna seguro o retry do cliente (o 503 significa "retente"). Provado por `transferencias/tests/integration/payment/test_payment_service_busy.py` (marker `fault`, instância `transferencias-api-fault` com pool minúsculo, 100 requisições concorrentes).
+- **Evolução:** degraus 1 e 2 da seção 4.
+
+### (b) Acoplamento de disponibilidade com o Banco
+
+- **O que é:** todo request de cliente no Transferências chama `GET /auth/me` no Banco (`middlewares/client_auth.py` → `BankConnector.get_client_identity`), e o `POST /payments` chama ainda `POST /ledger/transactions`. Sem o Banco, o Transferências não autentica ninguém: tudo responde `503 RNV001017`, inclusive leituras.
+- **Por que existe:** a identidade tem um dono só (CLAUDE.md, "Tese da arquitetura"); duplicar a tabela de cliente foi descartado.
+- **Quando dói:** indisponibilidade do Banco derruba os dois serviços do ponto de vista do cliente. Disponibilidade composta: se cada serviço tem 99,9%, o conjunto serial tem no máximo ≈ 99,8% (0,999 × 0,999 = 0,998; conta, não medição).
+- **Mitigação hoje:** nenhuma além do timeout. Não há cache de identidade.
+- **Evolução:** cache curto do resultado de `/auth/me` (TTL de segundos, invalidado por revogação; custo: janela em que um token revogado ainda passa, decisão de segurança do grupo), ou token verificável localmente (assinado). Ambos mudam o modelo de segurança do CLAUDE.md (token hasheado no banco, com `revoked_at`), então exigem decisão explícita.
+
+### (c) Resultado desconhecido no timeout
+
+Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfecho é resolvido pelo retry do cliente (idempotência) ou, se ele nunca vier, por uma reconciliação que não existe.
+
+### (d) Conta quente no débito
+
+- **O que é:** o débito faz `SELECT ... FOR UPDATE` na linha da `account`, soma o saldo depois de travar, confere e insere (`banco/src/controllers/ledger_controller.py`, `_ensure_funds`; RFC §5.1). Débitos da **mesma** conta fazem fila; contas diferentes seguem em paralelo.
+- **Por que existe:** é o que impede o *lost update* sem guardar saldo na `entry`.
+- **Quando dói:** um lojista com muitos saques simultâneos. Mil débitos na mesma conta viram uma fila de mil transações curtas (RFC §5.1, perguntas de estresse). Mais lento para aquela conta, nunca errado.
+- **Mitigação hoje:** índice `(account_id, id) INCLUDE (debit_minor, credit_minor)` para o `SUM` ser index-only scan (`analise-defesa-rfc.md` §4.5).
+- **Evolução:** saldo materializado em linha **mutável e reconstruível**, atualizado na mesma transação com `UPDATE ... SET saldo = saldo + :delta WHERE saldo + :delta >= 0` (RFC §5.1). Nunca `balance_after` na `entry`.
+
+### (e) Contas internas sem conferência de saldo no caminho da requisição
+
+- **O que é:** `reserves`, `in_transit` e `revenue` nunca são travadas nem conferidas (`_ensure_funds` só considera contas com `company_id`). Elas crescem com o volume do sistema inteiro, então o `SUM` delas é o que quebra primeiro (`analise-defesa-rfc.md` §4.5).
+- **Por que existe:** travar uma conta tocada por toda transação serializaria o sistema (RFC §5.1 item 5).
+- **Controle relacionado:** `account_key` de conta interna é recusado com `422 RNV001034`; elas só entram por `account_code`, o que impede o cliente de movimentar o Caixa ou o Trânsito.
+- **Quando dói:** quando alguém precisar saber o saldo de `in_transit` ou `reserves` em tempo real. Hoje nada no caminho da requisição depende disso.
+- **Mitigação:** reconciliação em lote, com *checkpoint* se o volume pedir (RFC §5.1). **Esse job também não existe hoje**; a equação `Caixa = Trânsito + Clientes + Receita` (RFC §1) é verificável por consulta, mas ninguém a executa periodicamente.
+- **Evolução:** job de reconciliação com checkpoint; depois, saldo materializado para as internas.
+
+### (f) Mocks em memória e `as_of` fora da RFC
+
+- **Mocks:** o `external-mocks` guarda `transfer_id` e o contador do cenário `flaky` em memória; reiniciar o container zera tudo (`mocks-externos.md`, "Limites aceitos"). O risco "o mock pagou, mas a resposta se perdeu" não existe aqui; contra um banco real, a RFC §2 o registra como risco aceito (consultar o status no destino antes do `failed` por timeout). O birô ainda é um mock dentro do Banco.
+- **`as_of`:** corpo opcional de `POST /internal/settlements` e `POST /internal/payouts/reconcile`, que injeta o "agora". **Não está na RFC v7.2**, que só fala em "o relógio" (`rotas.md`, notas finais). Só vale com `INTERNAL-TOKEN` e existe para testar sem esperar a janela (24h/72h/720h) e o backoff. Risco: um operador com o token pode antecipar a liberação de um pagamento; é um refino que precisa de aprovação do grupo e de ficar fora do caminho do cliente (hoje já é).
+- **Evolução:** trocar o mock por integração real exige a consulta de status no destino; `as_of` entra na RFC ou sai quando houver um relógio injetável de outra forma.
+
+### (g) Outros limites reais
+
+| Limite | O que é | Fonte |
+|---|---|---|
+| Sem reconciliação nenhuma | Receipt órfão (seção 2), equação do livro e payout em `pending` dependem de jobs que ainda são só contrato. | RFC §2 passo 7; `rotas.md` |
+| Retry reflete o estado atual | Um retry tardio de `POST /payments` volta o estado de agora (por exemplo `settled`), e `200` em vez de `201`. É decisão, mas surpreende quem espera uma foto da resposta original. | RFC §5.2 item 4 |
+| `payload_hash` só cobre `company_key`, `amount_minor`, `method` | Mudar outro campo com a mesma chave não é detectado como reuso. Hoje esses são todos os campos que definem o pedido. | `payment_controller.py`, `_meaningful_fields` |
+| Chave do cliente limitada a 50 caracteres | Vem do composto `receipt:<company_key>:<chave>` = 95 de 100. Aumentar a chave exige aumentar a coluna do Banco. | RFC §5.2 "Tamanhos coordenados" |
+| Fila de payout com o mock | A espera do backoff do payout depende de um job chamado de fora; sem agendador, ninguém chama. | RFC §2 passo 7 |
+| Sem observabilidade de saturação | Não há métrica de uso do pool nem de latência do Banco. Sem ela, os números da seção 3(a) não podem ser validados. | (ausência no código) |
+| Isolamento READ COMMITTED é regra | Mudar para REPEATABLE READ quebra a conferência do débito. | RFC §5.1 item 6 |
+
+## 4. Caminho de evolução em degraus
+
+| Degrau | O que muda | Custo | Muda o contrato da RFC? | Status |
+|---|---|---|---|---|
+| 1a | `BANK_TIMEOUT_SECONDS` configurável por variável de ambiente (float, padrão 5, em `constants.py`). O padrão não mudou; agora dá para baixar sem alterar código. Trade-off: timeout menor segura menos conexão, mas aumenta a chance de "resultado desconhecido" (cenário B) em Banco lento. Ainda em aberto: timeouts separados de conexão e de leitura. | Muito baixo | Não | aplicado em 2026-10-11, branch `chore/bank-timeout-and-pool-busy` |
+| 1b | Pool configurável (`DB_POOL_SIZE` 10, `DB_MAX_OVERFLOW` 10, `DB_POOL_TIMEOUT_SECONDS` 3 por padrão; 20 conexões para 40 threads) e `pool_timeout` curto: falha rápido em até 3 s em vez de enfileirar até 30 s. A decisão de código novo foi tomada: `RNV000006` (503 "Service Busy", genérico), levantado quando o pool estoura dentro do prazo, mapeado em `app.py` a partir de `sqlalchemy.exc.TimeoutError`. O 503 significa "retente". Dimensionar o pool contra as threads do servidor continua sendo ajuste a medir. | Baixo | Sim, um código novo no catálogo (aprovado) | aplicado em 2026-10-11, branch `chore/bank-timeout-and-pool-busy` |
+| 1c | Circuit breaker no `BankConnector`: após N falhas, responde `503` direto por X segundos sem chamar o Banco. Protege o pool em Banco lento. Pode não valer a complexidade nesta escala: com timeout de 5 s, 20 conexões e `pool_timeout` de 3 s o sistema já se auto-limita, e um breaker adiciona estado, configuração e casos de teste (aberto, meio-aberto, fechado). Vale se o Banco passar a ter lentidão frequente. | Baixo a médio | Não | não aplicado |
+| 1d | Reconciliação periódica Transferências × Banco para receipt órfão (seção 2) e verificação da equação do livro (3e). | Médio | Não, é job novo | não aplicado |
+| 2 | Não segurar a conexão durante a chamada HTTP: gravar o `payment` com estado intermediário (por exemplo `pending_ledger`), commitar, chamar o Banco sem conexão emprestada, e promover a `held` depois. Um job de recuperação reprocessa os `pending_ledger` antigos reusando a chave `receipt:...`. Elimina a cascata do 3(a) e o receipt órfão, porque o `payment` passa a existir antes da chamada. | Médio: novo estado e transições em `payment_transition`, job, testes de falha no meio | Parcial: novo estado do `payment` (a RFC fixa `held`/`settled`/`refunded`) e o `201` passa a significar "aceito", não "lançado". Exige decisão explícita. | não aplicado |
+| 3 | Outbox assíncrono com `202`: o Transferências grava o pedido e um evento na mesma transação; um *worker* entrega ao Banco com retry. Larga escala: o Transferências deixa de depender da disponibilidade do Banco para aceitar o pedido. | Alto: worker, outbox, observabilidade, consistência eventual no produto | **Sim**: contradiz a decisão "sem saga, sem fila" (RFC §6) e muda a resposta de `201` para `202`. Exige decisão explícita do grupo e nova versão da RFC. | não aplicado |
+
+Ordem sugerida: 1a e 1b já aplicados; 1d antes de ter volume real, 2 quando a cascata aparecer em medição, 3 só com requisito de escala que o justifique.
+
+## 5. Como defender isso numa entrevista
+
+- **É decisão, não esquecimento.** A RFC §6 descarta saga, fila e processamento assíncrono de propósito: "corretude do saldo vale mais que vazão". O custo (vazão limitada por instância, acoplamento ao Banco) está escrito aqui com números.
+- **O que a escala não quebra:** o dinheiro. Chave determinística no lançamento, `UNIQUE` na entidade e `FOR UPDATE` no débito valem com 1 ou 1.000 instâncias. O pior que o volume faz é recusar ou atrasar.
+- **O limite real e honesto:** conexão presa na chamada ao Banco (20 conexões por instância, 4 pagamentos/s no pior caso de Banco travado, conta na seção 3a; o pool já falha em 3 s com `503 RNV000006`) e o resultado desconhecido no timeout, com a reconciliação ainda inexistente.
+- **O 503 é "retente com a mesma chave", não "falhou".** Por isso não guardamos `failed`: a idempotência reencontra o receipt no Banco e fecha a conta. Reconhecemos que o texto do `RNV001017` ("nada foi gravado") merece ajuste.
+- **Próximo passo:** o degrau 1 (timeout configurável, `pool_timeout` curto, `RNV000006`) já está aplicado; falta a reconciliação; degrau 2 se a medição mostrar cascata; degrau 3 só com mudança explícita da RFC.
