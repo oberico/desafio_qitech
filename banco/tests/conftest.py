@@ -117,3 +117,31 @@ def open_account(accounts, create_company):
 @pytest.fixture
 def active_account(open_account, client_token) -> str:
     return open_account(client_token)
+
+
+@pytest.fixture
+def credit_account(ledger):
+    def _credit(account_key: str, amount_minor: int) -> str:
+        receipt = PayloadGenerator.create_ledger_transaction_payload(
+            entries=[
+                {"account_code": "reserves", "debit_minor": amount_minor},
+                {"account_code": "in_transit", "credit_minor": amount_minor},
+            ],
+        )
+        status, receipt_response = ledger.post_transaction(receipt, RandomGenerator.uuid())
+        assert status == 201, f"não deu para registrar o recebimento do cenário: {status} {receipt_response}"
+
+        settlement = PayloadGenerator.create_ledger_transaction_payload(
+            type="settlement",
+            settles_transaction_key=receipt_response["transaction_key"],
+            entries=[
+                {"account_code": "in_transit", "debit_minor": amount_minor},
+                {"account_key": account_key, "credit_minor": amount_minor},
+            ],
+        )
+        status, settlement_response = ledger.post_transaction(settlement, RandomGenerator.uuid())
+        assert status == 201, f"não deu para creditar a conta do cenário: {status} {settlement_response}"
+        return settlement_response["transaction_key"]
+
+    return _credit
+

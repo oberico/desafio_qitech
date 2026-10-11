@@ -14,6 +14,12 @@ class AccountRequests:
     def close(self, account_key: str, token: str = None) -> tuple:
         return self.api.post(f"/accounts/{account_key}/close", headers=self._auth(token))
 
+    def get_balance(self, account_key: str, token: str = None) -> tuple:
+        return self.api.get(f"/accounts/{account_key}/balance", headers=self._auth(token))
+
+    def get_statement(self, account_key: str, token: str = None, params: dict = None) -> tuple:
+        return self.api.get(f"/accounts/{account_key}/statement", headers=self._auth(token), params=params)
+
     @staticmethod
     def _auth(token: str) -> dict:
         return {"Authorization": f"Bearer {token}"} if token else None
