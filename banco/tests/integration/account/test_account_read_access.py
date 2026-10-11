@@ -39,3 +39,24 @@ class TestAccountReadAccess:
 
         assert status == 404
         assert response["code"] == "RNV001021"
+
+    @pytest.mark.parametrize("route", READ_ROUTES)
+    def test_owner_can_still_read_a_blocked_account(self, api, blocked_account, client_token, route):
+        status, _ = api.get(
+            f"/accounts/{blocked_account}/{route}",
+            headers={"Authorization": f"Bearer {client_token}"},
+        )
+
+        assert status == 200
+
+    @pytest.mark.parametrize("route", READ_ROUTES)
+    def test_owner_can_still_read_a_closed_account(self, api, accounts, active_account, client_token, route):
+        status, _ = accounts.close(active_account, client_token)
+        assert status == 200
+
+        status, _ = api.get(
+            f"/accounts/{active_account}/{route}",
+            headers={"Authorization": f"Bearer {client_token}"},
+        )
+
+        assert status == 200

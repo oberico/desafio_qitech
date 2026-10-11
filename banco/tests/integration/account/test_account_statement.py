@@ -11,6 +11,20 @@ class TestAccountStatement:
         assert response["entries"] == []
         assert response["has_more"] is False
 
+    def test_statement_shows_credit_entry(self, accounts, active_account, client_token, credit_account):
+        transaction_key = credit_account(active_account, 10000)
+
+        status, response = accounts.get_statement(active_account, client_token)
+
+        assert status == 200
+        assert len(response["entries"]) == 1
+        entry = response["entries"][0]
+        assert entry["transaction_key"] == transaction_key
+        assert entry["type"] == "settlement"
+        assert entry["debit_minor"] == 0
+        assert entry["credit_minor"] == 10000
+        assert entry["created_at"]
+
     def test_statement_lists_newest_entries_first(self, accounts, active_account, client_token, credit_account):
         credit_account(active_account, 1000)
         credit_account(active_account, 2000)
