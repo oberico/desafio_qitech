@@ -1,5 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
+
 from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.random_generator import RandomGenerator
 
@@ -297,3 +299,41 @@ class TestLedgerTransactionCreate:
         refused = [response["code"] for status, response in results if status == 422]
         assert statuses == [201, 422]
         assert refused == ["RNV001006"]
+
+    def test_payout_is_born_pending(self, ledger, active_account):
+        receipt = PayloadGenerator.create_ledger_transaction_payload()
+        _, receipt_response = ledger.post_transaction(receipt, RandomGenerator.uuid())
+        settlement = PayloadGenerator.create_ledger_transaction_payload(
+            type="settlement",
+            settles_transaction_key=receipt_response["transaction_key"],
+            entries=[
+                {"account_code": "in_transit", "debit_minor": 10000},
+                {"account_key": active_account, "credit_minor": 10000},
+            ],
+        )
+        status, _ = ledger.post_transaction(settlement, RandomGenerator.uuid())
+        assert status == 201
+
+        payout = PayloadGenerator.create_ledger_transaction_payload(
+            type="payout",
+            entries=[
+                {"account_key": active_account, "debit_minor": 10000},
+                {"account_code": "in_transit", "credit_minor": 10000},
+            ],
+        )
+        status, response = ledger.post_transaction(payout, RandomGenerator.uuid())
+        assert status == 201
+        assert response["type"] == "payout"
+        assert response["status"] == "pending"
+
+    @pytest.mark.parametrize("amount", ["10000", 100.5, 10000.0], ids=["text", "decimal", "whole_decimal"])
+    def test_refuses_non_integer_amount(self, ledger, amount):
+        payload = PayloadGenerator.create_ledger_transaction_payload(
+            entries=[
+                {"account_code": "reserves", "debit_minor": amount},
+                {"account_code": "in_transit", "credit_minor": amount},
+            ]
+        )
+        status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
+        assert status == 400
+        assert response["code"] == "RNV000001"
