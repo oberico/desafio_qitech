@@ -127,7 +127,7 @@ class TestInvalidBody:
         assert response["code"] == "RNV000001"
 
     def test_rejects_a_body_that_is_not_json(self, api):
-        status, response, _ = api.request_with_headers("POST", "/transfers")
+        status, response, _ = api.request_with_headers("POST", "/interbank/transfers")
         assert status == 400
         assert response["code"] == "RNV000001"
 

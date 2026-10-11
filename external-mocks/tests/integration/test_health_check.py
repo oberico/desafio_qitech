@@ -7,7 +7,7 @@ class TestHealthCheck:
     def test_root_returns_the_service_name(self, api):
         status, response = api.get("/")
         assert status == 200
-        assert response == {"service": "interbank-mock"}
+        assert response == {"service": "external-mocks"}
 
     def test_unknown_route_returns_not_found(self, api):
         status, response = api.get("/nowhere")
@@ -15,6 +15,6 @@ class TestHealthCheck:
         assert response["code"] == "RNV000004"
 
     def test_wrong_method_returns_method_not_allowed(self, api):
-        status, response = api.get("/transfers")
+        status, response = api.get("/interbank/transfers")
         assert status == 405
         assert response["code"] == "RNV000005"

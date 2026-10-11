@@ -57,13 +57,37 @@ jobs:
           cd transferencias
           timeout 300 python -m pytest tests/ --junitxml=../reports/transferencias.xml
 
+      - name: Start fault-injection profile
+        id: fault_up
+        run: docker compose --profile fault up -d --build
+
+      - name: Wait for the fault API to be healthy
+        id: fault_health
+        run: |
+          url=http://localhost:8012/health_check
+          for attempt in $(seq 1 30); do
+            if curl -fsS "$url" > /dev/null; then
+              echo "healthy: $url"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "not healthy after 60s: $url"
+          exit 1
+
+      - name: Run pytest (transferencias, fault)
+        id: pytest_fault
+        run: |
+          cd transferencias
+          timeout 300 python -m pytest tests/ -m fault --junitxml=../reports/transferencias-fault.xml
+
       - name: Show container logs on failure
         if: failure()
-        run: docker compose logs --no-color --tail=200
+        run: docker compose --profile fault logs --no-color --tail=200
 
       - name: Stop containers
         if: always()
-        run: docker compose down -v
+        run: docker compose --profile fault down -v
 
       - name: Notify Discord
         if: always()
