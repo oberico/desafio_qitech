@@ -3,6 +3,8 @@ name: CI Banco
 on:
   push:
     branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
 
 permissions:
   contents: read
@@ -66,10 +68,10 @@ jobs:
           STEPS_JSON: ${{ toJSON(steps) }}
           SERVICE_TITLE: "Banco CI"
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
-          COMMIT_SHA: ${{ github.sha }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          BRANCH: ${{ github.ref_name }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha || github.sha }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          COMMIT_MESSAGE: ${{ github.event.pull_request.title || github.event.head_commit.message }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
           ACTOR: ${{ github.actor }}
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then
