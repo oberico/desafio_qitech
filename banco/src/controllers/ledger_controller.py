@@ -9,6 +9,7 @@ from dtos import LedgerTransactionDTO
 from errors import (
     AccountNotFound,
     IdempotencyKeyReused,
+    InvalidTransactionReference,
     InsufficientFunds,
     LedgerAccountNotActive,
     LedgerTransactionNotFound,
@@ -24,6 +25,11 @@ POST_LEDGER_TRANSACTION_SCHEMA = os.path.join(SCHEMAS_DIR, "post_ledger_transact
 IDEMPOTENCY_CONSTRAINT = "uq_transaction_idempotency_key"
 CONSUMPTION_CONSTRAINTS = {"uq_transaction_settles", "uq_transaction_reverses"}
 BORN_PENDING = {TransactionType.PAYOUT}
+REFERENCEABLE_TYPES = {
+    TransactionType.SETTLEMENT: {TransactionType.RECEIPT, TransactionType.PAYOUT},
+    TransactionType.REFUND: {TransactionType.RECEIPT},
+    TransactionType.REVERSAL: {TransactionType.PAYOUT},
+}
 
 
 class LedgerController(BaseController):
@@ -43,6 +49,7 @@ class LedgerController(BaseController):
         self._ensure_balanced(legs)
         settles = self._resolve_transaction(payload.get("settles_transaction_key"))
         reverses = self._resolve_transaction(payload.get("reverses_transaction_key"))
+        self._ensure_referenceable(payload["type"], settles or reverses)
         self._ensure_not_consumed(settles)
         self._ensure_not_consumed(reverses)
         self._ensure_funds(legs)
@@ -65,7 +72,6 @@ class LedgerController(BaseController):
         self.session.commit()
         return transaction_dto, True
 
-    
     def _resolve_legs(self, entries: list) -> list:
         return [
             {
@@ -104,6 +110,12 @@ class LedgerController(BaseController):
             raise LedgerTransactionNotFound(transaction_key)
         return transaction
 
+    def _ensure_referenceable(self, type_enumerator: str, target) -> None:
+        if target is None:
+            return
+        if target.type.enumerator not in REFERENCEABLE_TYPES[type_enumerator]:
+            raise InvalidTransactionReference(target.transaction_key, target.type.enumerator)
+
     def _ensure_not_consumed(self, transaction) -> None:
         if transaction is None:
             return
@@ -127,7 +139,6 @@ class LedgerController(BaseController):
             return TransactionStatus.PENDING
         return TransactionStatus.SETTLED
 
-    
     def _replay(self, existing, request_hash: str) -> tuple:
         if existing.payload_hash != request_hash:
             raise IdempotencyKeyReused(existing.idempotency_key)

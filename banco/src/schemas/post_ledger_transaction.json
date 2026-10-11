@@ -33,6 +33,33 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {"properties": {"type": {"const": "settlement"}}},
+      "then": {
+        "required": ["settles_transaction_key"],
+        "not": {"required": ["reverses_transaction_key"]}
+      }
+    },
+    {
+      "if": {"properties": {"type": {"enum": ["refund", "reversal"]}}},
+      "then": {
+        "required": ["reverses_transaction_key"],
+        "not": {"required": ["settles_transaction_key"]}
+      }
+    },
+    {
+      "if": {"properties": {"type": {"enum": ["receipt", "payout"]}}},
+      "then": {
+        "not": {
+          "anyOf": [
+            {"required": ["settles_transaction_key"]},
+            {"required": ["reverses_transaction_key"]}
+          ]
+        }
+      }
+    }
+  ],
   "required": ["type", "entries"],
   "additionalProperties": false
 }

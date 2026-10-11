@@ -65,3 +65,14 @@ class IdempotencyKeyReused(QIException):
         description = f"The idempotency key {idempotency_key} was already used with a different payload."
         translation = "Esta chave de idempotência já foi usada com outro conteúdo."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidTransactionReference(QIException):
+    code = "RNV001033"
+
+    def __init__(self, transaction_key: str, transaction_type: str) -> None:
+        title = "Invalid Transaction Reference"
+        http_status = 422
+        description = f"The transaction {transaction_key} is a {transaction_type} and cannot be referenced by this operation."
+        translation = f"A transação {transaction_key} é do tipo {transaction_type} e não pode ser referenciada por esta operação."
+        super().__init__(title, self.code, http_status, description, translation)

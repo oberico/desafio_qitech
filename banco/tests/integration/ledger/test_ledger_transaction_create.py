@@ -6,6 +6,20 @@ from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.random_generator import RandomGenerator
 
 
+REFERENCE_FIELD = {"settlement": "settles_transaction_key", "refund": "reverses_transaction_key", "reversal": "reverses_transaction_key"}
+TARGET_PARENT = {"settlement": "receipt", "refund": "receipt", "reversal": "payout"}
+
+
+def create_transaction(ledger, type: str) -> str:
+    references = {}
+    if type in REFERENCE_FIELD:
+        references[REFERENCE_FIELD[type]] = create_transaction(ledger, TARGET_PARENT[type])
+    payload = PayloadGenerator.create_ledger_transaction_payload(type=type, **references)
+    status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
+    assert status == 201, f"could not create the {type} of the scenario: {status} {response}"
+    return response["transaction_key"]
+
+
 class TestLedgerTransactionCreate:
     def test_refuses_missing_internal_token(self, api):
         status, response = api.post("/ledger/transactions", body={})
@@ -192,6 +206,76 @@ class TestLedgerTransactionCreate:
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 400
         assert response["code"] == "RNV000001"
+
+    @pytest.mark.parametrize(
+        "type, references",
+        [
+            ("settlement", {}),
+            ("settlement", {"reverses_transaction_key": RandomGenerator.uuid()}),
+            (
+                "settlement",
+                {
+                    "settles_transaction_key": RandomGenerator.uuid(),
+                    "reverses_transaction_key": RandomGenerator.uuid(),
+                },
+            ),
+            ("refund", {}),
+            ("refund", {"settles_transaction_key": RandomGenerator.uuid()}),
+            ("reversal", {}),
+            ("reversal", {"settles_transaction_key": RandomGenerator.uuid()}),
+            ("receipt", {"settles_transaction_key": RandomGenerator.uuid()}),
+            ("receipt", {"reverses_transaction_key": RandomGenerator.uuid()}),
+            ("payout", {"settles_transaction_key": RandomGenerator.uuid()}),
+            ("payout", {"reverses_transaction_key": RandomGenerator.uuid()}),
+        ],
+        ids=[
+            "settlement_without_reference",
+            "settlement_with_reverses",
+            "settlement_with_both_references",
+            "refund_without_reference",
+            "refund_with_settles",
+            "reversal_without_reference",
+            "reversal_with_settles",
+            "receipt_with_settles",
+            "receipt_with_reverses",
+            "payout_with_settles",
+            "payout_with_reverses",
+        ],
+    )
+    def test_refuses_references_that_do_not_match_type(self, ledger, type, references):
+        payload = PayloadGenerator.create_ledger_transaction_payload(type=type, **references)
+        status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
+        assert status == 400
+        assert response["code"] == "RNV000001"
+
+    @pytest.mark.parametrize(
+        "type, target_type",
+        [
+            ("settlement", "refund"),
+            ("settlement", "reversal"),
+            ("settlement", "settlement"),
+            ("refund", "payout"),
+            ("refund", "refund"),
+            ("refund", "settlement"),
+            ("reversal", "receipt"),
+            ("reversal", "reversal"),
+            ("reversal", "settlement"),
+        ],
+    )
+    def test_refuses_reference_to_wrong_transaction_type(self, ledger, type, target_type):
+        target_key = create_transaction(ledger, target_type)
+        payload = PayloadGenerator.create_ledger_transaction_payload(type=type, **{REFERENCE_FIELD[type]: target_key})
+        status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
+        assert status == 422
+        assert response["code"] == "RNV001033"
+
+    @pytest.mark.parametrize("type, target_type", [("settlement", "receipt"), ("settlement", "payout"), ("refund", "receipt"), ("reversal", "payout")])
+    def test_accepts_reference_to_matching_transaction_type(self, ledger, type, target_type):
+        target_key = create_transaction(ledger, target_type)
+        payload = PayloadGenerator.create_ledger_transaction_payload(type=type, **{REFERENCE_FIELD[type]: target_key})
+        status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
+        assert status == 201
+        assert response["type"] == type
 
     def test_refuses_entry_with_debit_and_credit(self, ledger):
         payload = PayloadGenerator.create_ledger_transaction_payload(
