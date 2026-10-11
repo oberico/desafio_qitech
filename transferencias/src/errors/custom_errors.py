@@ -78,16 +78,16 @@ class InvalidSchema(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
-# class InvalidClientToken(QIException):
-#     code = "RNV000003"
-#
-#     def __init__(self) -> None:
-#         title = "Unauthorized"
-#         http_status = 401
-#         description = "The Authorization token is missing, invalid or revoked."
-#         translation = "O token de autorização está ausente, é inválido ou foi revogado."
-#         super().__init__(title, self.code, http_status, description, translation)
-#
+class InvalidClientToken(QIException):
+    code = "RNV000003"
+
+    def __init__(self) -> None:
+        title = "Unauthorized"
+        http_status = 401
+        description = "The Authorization token is missing, invalid or revoked."
+        translation = "O token de autorização está ausente, é inválido ou foi revogado."
+        super().__init__(title, self.code, http_status, description, translation)
+
 #
 # class BankUnavailable(QIException):
 #     code = "RNV001017"
