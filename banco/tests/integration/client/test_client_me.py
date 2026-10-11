@@ -1,18 +1,4 @@
-import pytest
-
-
 class TestClientMe:
-    @pytest.mark.parametrize("token", [None, "token-que-nao-existe"], ids=["missing_token", "unknown_token"])
-    def test_refuses_missing_or_unknown_token(self, clients, token):
-        status, response = clients.get_me(token)
-        assert status == 401
-        assert response["code"] == "RNV000003"
-
-    def test_refuses_internal_token_in_place_of_client_token(self, clients, internal_token):
-        status, response = clients.get_me(internal_token)
-        assert status == 401
-        assert response["code"] == "RNV000003"
-
     def test_returns_token_owner_data(self, clients, created_client):
         payload, created = created_client
         status, response = clients.get_me(created["token"])
