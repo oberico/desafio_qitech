@@ -27,6 +27,15 @@ class AccountRepository:
             .first()
         )
 
+    def lock_client_account_by_key(self, account_key: str) -> Account:
+        return (
+            self.session.query(Account)
+            .join(Company, Company.id == Account.company_id)
+            .filter(Account.account_key == account_key.lower())
+            .with_for_update(of=Account)
+            .first()
+        )
+
     def exists_for_company(self, company_id: int) -> bool:
         return self.session.query(Account.id).filter(Account.company_id == company_id).first() is not None
 

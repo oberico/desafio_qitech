@@ -70,4 +70,6 @@ application.add_api_route("/ledger/transactions", ledger_transaction_resource.on
 application.add_api_route("/companies/{company_key}/accounts", account_resource.on_post, methods=["POST"])
 application.add_api_route("/accounts/{account_key}", account_resource.on_get_by_key, methods=["GET"])
 application.add_api_route("/accounts/{account_key}/close", account_resource.on_post_close, methods=["POST"])
+application.add_api_route("/internal/accounts/{account_key}/block", account_resource.on_post_block, methods=["POST"])
+application.add_api_route("/internal/accounts/{account_key}/unblock", account_resource.on_post_unblock, methods=["POST"])
 application.add_api_route("/auth/me", auth_resource.on_get_me, methods=["GET"])
