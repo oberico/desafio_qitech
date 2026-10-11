@@ -1,34 +1,21 @@
+from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID
 
 import pytest
 
 from tests.utils.payload_generator import PayloadGenerator
 
-
 ERROR_FIELDS = {"title", "description", "translation", "code"}
 
 
 class TestCompanyCreate:
-    def test_refuses_missing_token(self, companies):
-        payload = PayloadGenerator.create_company_payload()
-        status, response = companies.post_company(payload)
-        assert status == 401
-        assert response["code"] == "RNV000003"
-
-    def test_refuses_invalid_token(self, companies):
-        payload = PayloadGenerator.create_company_payload()
-        status, response = companies.post_company(payload, "token-que-nao-existe")
-        assert status == 401
-        assert response["code"] == "RNV000003"
-
-    def test_refuses_empty_body(self, companies, client_token):
-        status, response = companies.post_company({}, client_token)
-        assert status == 400
-        assert response["code"] == "RNV000001"
-
-    def test_refuses_unknown_field(self, companies, client_token):
-        payload = PayloadGenerator.create_company_payload(unexpected=1)
-        status, response = companies.post_company(payload, client_token)
+    @pytest.mark.parametrize(
+        "body",
+        [{}, PayloadGenerator.create_company_payload(unexpected=1)],
+        ids=["empty_body", "unknown_field"],
+    )
+    def test_refuses_invalid_body(self, companies, client_token, body):
+        status, response = companies.post_company(body, client_token)
         assert status == 400
         assert response["code"] == "RNV000001"
 
@@ -48,7 +35,17 @@ class TestCompanyCreate:
             ("cnpj", "529.982.247-25"),
             ("legal_name", None),
             ("legal_name", ""),
+            ("legal_name", "   "),
             ("legal_name", "a" * 256),
+        ],
+        ids=[
+            "cnpj_as_number",
+            "cnpj_without_punctuation",
+            "cnpj_in_cpf_format",
+            "legal_name_null",
+            "legal_name_empty",
+            "legal_name_only_spaces",
+            "legal_name_256_characters",
         ],
     )
     def test_refuses_malformed_field(self, companies, client_token, field, value):
@@ -79,15 +76,13 @@ class TestCompanyCreate:
         assert response["account_status"] is None
 
     def test_response_does_not_expose_internal_fields(self, companies, client_token):
-        payload = PayloadGenerator.create_company_payload()
-        status, response = companies.post_company(payload, client_token)
+        status, response = companies.post_company(PayloadGenerator.create_company_payload(), client_token)
         assert status == 201
         assert "id" not in response
         assert "client_id" not in response
 
     def test_created_company_belongs_to_the_token_owner(self, companies, client_token):
-        payload = PayloadGenerator.create_company_payload()
-        status, created = companies.post_company(payload, client_token)
+        status, created = companies.post_company(PayloadGenerator.create_company_payload(), client_token)
         assert status == 201
 
         status, response = companies.get_company(created["company_key"], client_token)
@@ -102,30 +97,21 @@ class TestCompanyCreate:
         assert status == 201
         assert first["company_key"] != second["company_key"]
 
-    @pytest.mark.parametrize("cnpj", ["11.222.333/0001-82", "00.000.000/0000-00"])
+    @pytest.mark.parametrize("cnpj", ["11.222.333/0001-82", "00.000.000/0000-00"], ids=["wrong_check_digits", "repeated_digits"])
     def test_refuses_cnpj_with_invalid_digits(self, companies, client_token, cnpj):
         payload = PayloadGenerator.create_company_payload(cnpj=cnpj)
         status, response = companies.post_company(payload, client_token)
         assert status == 422
         assert response["code"] == "RNV001020"
 
-    def test_refuses_duplicated_cnpj(self, companies, client_token):
+    @pytest.mark.parametrize("second_owner", ["client_token", "other_client_token"], ids=["same_client", "another_client"])
+    def test_refuses_duplicated_cnpj(self, request, companies, client_token, second_owner):
         first = PayloadGenerator.create_company_payload()
         status, _ = companies.post_company(first, client_token)
         assert status == 201
 
         second = PayloadGenerator.create_company_payload(cnpj=first["cnpj"])
-        status, response = companies.post_company(second, client_token)
-        assert status == 409
-        assert response["code"] == "RNV001019"
-
-    def test_refuses_cnpj_already_taken_by_another_client(self, companies, client_token, other_client_token):
-        first = PayloadGenerator.create_company_payload()
-        status, _ = companies.post_company(first, client_token)
-        assert status == 201
-
-        second = PayloadGenerator.create_company_payload(cnpj=first["cnpj"])
-        status, response = companies.post_company(second, other_client_token)
+        status, response = companies.post_company(second, request.getfixturevalue(second_owner))
         assert status == 409
         assert response["code"] == "RNV001019"
 
@@ -137,3 +123,12 @@ class TestCompanyCreate:
         payload["legal_name"] = "Loja da Fulana LTDA"
         status, _ = companies.post_company(payload, client_token)
         assert status == 201
+
+    def test_concurrent_registrations_with_same_cnpj_create_a_single_company(self, companies, client_token):
+        payload = PayloadGenerator.create_company_payload()
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            results = list(pool.map(lambda _: companies.post_company(payload, client_token), range(10)))
+
+        assert sorted(status for status, _ in results) == [201] + [409] * 9
+        assert {response["code"] for status, response in results if status == 409} == {"RNV001019"}

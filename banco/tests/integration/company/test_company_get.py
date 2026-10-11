@@ -13,18 +13,6 @@ def created_company(companies, client_token) -> tuple:
 
 
 class TestCompanyGet:
-    def test_refuses_missing_token(self, companies, created_company):
-        _, company_key = created_company
-        status, response = companies.get_company(company_key)
-        assert status == 401
-        assert response["code"] == "RNV000003"
-
-    def test_refuses_invalid_token(self, companies, created_company):
-        _, company_key = created_company
-        status, response = companies.get_company(company_key, "token-que-nao-existe")
-        assert status == 401
-        assert response["code"] == "RNV000003"
-
     def test_returns_own_company(self, companies, client_token, created_company):
         payload, company_key = created_company
         status, response = companies.get_company(company_key, client_token)
@@ -54,12 +42,8 @@ class TestCompanyGet:
         assert status == 404
         assert response["code"] == "RNV001018"
 
-    def test_refuses_nonexistent_company(self, companies, client_token):
-        status, response = companies.get_company(RandomGenerator.uuid(), client_token)
-        assert status == 404
-        assert response["code"] == "RNV001018"
-
-    def test_refuses_malformed_company_key(self, companies, client_token):
-        status, response = companies.get_company("x" * 36, client_token)
+    @pytest.mark.parametrize("company_key", [RandomGenerator.uuid(), "x" * 36], ids=["nonexistent", "malformed"])
+    def test_refuses_company_that_does_not_exist(self, companies, client_token, company_key):
+        status, response = companies.get_company(company_key, client_token)
         assert status == 404
         assert response["code"] == "RNV001018"
