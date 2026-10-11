@@ -61,7 +61,12 @@ class PaymentRepository:
         self.session.flush()
 
     def get_method(self, enumerator: str) -> PaymentMethod:
-        return self.session.query(PaymentMethod).filter(PaymentMethod.enumerator == enumerator).first()
+        return (
+            self.session.query(PaymentMethod)
+            .filter(PaymentMethod.enumerator == enumerator)
+            .order_by(PaymentMethod.version.desc())
+            .first()
+        )
 
     def get_status(self, enumerator: str) -> PaymentStatus:
         return self.session.query(PaymentStatus).filter(PaymentStatus.enumerator == enumerator).first()
