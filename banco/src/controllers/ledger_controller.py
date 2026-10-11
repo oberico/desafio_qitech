@@ -9,6 +9,7 @@ from dtos import LedgerTransactionDTO
 from errors import (
     AccountNotFound,
     IdempotencyKeyReused,
+    InternalAccountNotAllowed,
     InvalidTransactionReference,
     InsufficientFunds,
     LedgerAccountNotActive,
@@ -16,7 +17,7 @@ from errors import (
     TransactionAlreadyConsumed,
     UnbalancedEntries,
 )
-from models import AccountStatus, TransactionStatus, TransactionType
+from models import Account, AccountStatus, TransactionStatus, TransactionType
 from repositories import LedgerRepository
 from utils.payload_hash import payload_hash
 from utils.schema_handler import validate_json
@@ -92,6 +93,8 @@ class LedgerController(BaseController):
         else:
             reference = entry["account_key"]
             account = self.ledger_repository.get_account_by_key(reference)
+            if account is not None and account.code in Account.INTERNAL_CODES:
+                raise InternalAccountNotAllowed(reference)
 
         if account is None:
             raise AccountNotFound(reference)

@@ -9,6 +9,11 @@ from models.base import Base
 class Account(Base):
     __tablename__ = "account"
 
+    RESERVES = "reserves"
+    IN_TRANSIT = "in_transit"
+    REVENUE = "revenue"
+    INTERNAL_CODES = {RESERVES, IN_TRANSIT, REVENUE}
+
     id = Column(Integer, primary_key=True)
     account_key = Column(CHAR(36), nullable=False)
     code = Column(String(20))
@@ -25,5 +30,6 @@ class Account(Base):
         UniqueConstraint("company_id", name="account_company_id_key"),
     )
 
+    account_class = relationship("AccountClass", foreign_keys=[class_id], lazy="selectin")
     status = relationship("AccountStatus", foreign_keys=[status_id], lazy="selectin")
     company = relationship("Company", back_populates="account", lazy="selectin")
