@@ -3,7 +3,7 @@ from uuid import uuid4
 from connectors import MockBureauConnector
 from connectors.mock_bureau_connector import REJECTION_REASON
 from controllers.base_controller import BaseController
-from dtos import AccountDTO
+from dtos import AccountDTO, InternalAccountDTO
 from errors import AccountNotActive, AccountNotFound, CompanyAlreadyHasAccount, CompanyNotFound
 from models import Account, AccountClass, AccountStatus
 from repositories import AccountRepository, CompanyRepository
@@ -18,6 +18,9 @@ class AccountController(BaseController):
         self.account_repository = AccountRepository(session)
         self.company_repository = CompanyRepository(session)
         self.bureau_connector = MockBureauConnector()
+
+    def list_internal(self) -> list:
+        return [InternalAccountDTO.obj_to_dict(account) for account in self.account_repository.list_internal()]
 
     def open(self, company_key: str, client_id: int) -> dict:
         company = self.company_repository.lock_by_key_and_client(company_key, client_id)
