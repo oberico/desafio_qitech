@@ -10,7 +10,8 @@ local.env
 credentials
 .aws/
 internal_docs/*
-internal_docs
+!internal_docs/rotas.md
+!internal_docs/catalogo-de-erros.md
 # --- Dados -------------------------------------------------
 *.csv
 *.xlsx
