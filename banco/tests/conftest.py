@@ -117,3 +117,9 @@ def open_account(accounts, create_company):
 @pytest.fixture
 def active_account(open_account, client_token) -> str:
     return open_account(client_token)
+
+@pytest.fixture
+def blocked_account(accounts, active_account, internal_token) -> str:
+    status, response = accounts.block(active_account, internal_token)
+    assert status == 200, f"não deu para bloquear a conta do cenário: {status} {response}"
+    return active_account

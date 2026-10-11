@@ -4,7 +4,7 @@ from connectors import MockBureauConnector
 from connectors.mock_bureau_connector import REJECTION_REASON
 from controllers.base_controller import BaseController
 from dtos import AccountDTO, InternalAccountDTO
-from errors import AccountNotActive, AccountNotFound, CompanyAlreadyHasAccount, CompanyNotFound
+from errors import AccountNotActive, AccountNotBlocked, AccountNotFound, CompanyAlreadyHasAccount, CompanyNotFound
 from models import Account, AccountClass, AccountStatus
 from repositories import AccountRepository, CompanyRepository
 
@@ -67,6 +67,32 @@ class AccountController(BaseController):
             raise AccountNotActive()
 
         self.account_repository.change_status(account, self.account_repository.get_status(AccountStatus.CLOSED))
+
+        account_dto = AccountDTO.obj_to_dict(account)
+        self.session.commit()
+        return account_dto
+
+    def block(self, account_key: str) -> dict:
+        account = self.account_repository.lock_client_account_by_key(account_key)
+        if account is None:
+            raise AccountNotFound(account_key)
+        if account.status.enumerator != AccountStatus.ACTIVE:
+            raise AccountNotActive()
+
+        self.account_repository.change_status(account, self.account_repository.get_status(AccountStatus.BLOCKED))
+
+        account_dto = AccountDTO.obj_to_dict(account)
+        self.session.commit()
+        return account_dto
+
+    def unblock(self, account_key: str) -> dict:
+        account = self.account_repository.lock_client_account_by_key(account_key)
+        if account is None:
+            raise AccountNotFound(account_key)
+        if account.status.enumerator != AccountStatus.BLOCKED:
+            raise AccountNotBlocked()
+
+        self.account_repository.change_status(account, self.account_repository.get_status(AccountStatus.ACTIVE))
 
         account_dto = AccountDTO.obj_to_dict(account)
         self.session.commit()
