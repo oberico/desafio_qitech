@@ -29,6 +29,6 @@ class AccountNotActive(QIException):
     def __init__(self) -> None:
         title = "Account Not Active"
         http_status = 409
-        description = "Only an active account can be closed."
-        translation = "Só uma conta ativa pode ser encerrada."
+        description = "The account is not active, so this operation is not allowed."
+        translation = "A conta não está ativa, por isso esta operação não é permitida."
         super().__init__(title, self.code, http_status, description, translation)
