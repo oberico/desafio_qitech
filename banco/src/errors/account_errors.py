@@ -33,6 +33,7 @@ class AccountNotActive(QIException):
         translation = "A conta não está ativa, por isso esta operação não é permitida."
         super().__init__(title, self.code, http_status, description, translation)
 
+
 class AccountNotBlocked(QIException):
     code = "RNV001010"
 
@@ -42,5 +43,3 @@ class AccountNotBlocked(QIException):
         description = "The account is not blocked, so it cannot be unblocked."
         translation = "A conta não está bloqueada, por isso não pode ser desbloqueada."
         super().__init__(title, self.code, http_status, description, translation)
-
-
