@@ -1,6 +1,6 @@
 import requests
 
-from constants import BANK_API_URL, BANK_TIMEOUT_SECONDS
+from constants import BANK_API_URL, BANK_TIMEOUT_SECONDS, INTERNAL_TOKEN
 from errors import BankUnavailable
 
 
@@ -8,8 +8,8 @@ class BankConnector:
     def get_client_identity(self, client_token: str) -> dict:
         try:
             response = requests.get(
-                f"{BANK_API_URL}/me",
-                headers={"Authorization": f"Bearer {client_token}"},
+                f"{BANK_API_URL}/auth/me",
+                headers={"Authorization": f"Bearer {client_token}", "INTERNAL-TOKEN": INTERNAL_TOKEN},
                 timeout=BANK_TIMEOUT_SECONDS,
             )
         except requests.exceptions.RequestException as error:
