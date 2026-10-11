@@ -38,3 +38,14 @@ class TestAccountBlockAccess:
 
         assert status == 404
         assert response["code"] == "RNV001021"
+
+    @pytest.mark.parametrize("code", ["reserves", "in_transit", "revenue"])
+    def test_internal_account_cannot_be_blocked(self, accounts, internal_accounts, internal_account_keys, internal_token, code):
+        status, response = accounts.block(internal_account_keys[code], internal_token)
+
+        assert status == 404
+        assert response["code"] == "RNV001021"
+
+        status, response = internal_accounts.list_internal_accounts()
+        statuses = {account["code"]: account["status"] for account in response}
+        assert statuses[code] == "active"
