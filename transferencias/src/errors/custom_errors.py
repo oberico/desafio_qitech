@@ -98,3 +98,36 @@ class BankUnavailable(QIException):
         description = "The bank service is unavailable; nothing was recorded."
         translation = "O Banco está indisponível; nada foi gravado."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class NotFoundCompany(QIException):
+    code = "RNV001018"
+
+    def __init__(self, company_key: str) -> None:
+        title = "Company not Found"
+        http_status = 404
+        description = f"Company with key {company_key} was not found."
+        translation = f"A empresa com chave {company_key} não foi encontrada."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class CompanyWithoutAccount(QIException):
+    code = "RNV001030"
+
+    def __init__(self) -> None:
+        title = "Company Without Account"
+        http_status = 403
+        description = "The company has no open account."
+        translation = "A empresa não possui conta aberta."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class AccountNotActive(QIException):
+    code = "RNV001031"
+
+    def __init__(self) -> None:
+        title = "Account Not Active"
+        http_status = 403
+        description = "The account is not active, so this operation is not allowed."
+        translation = "A conta não está ativa, por isso esta operação não é permitida."
+        super().__init__(title, self.code, http_status, description, translation)

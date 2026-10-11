@@ -4,6 +4,7 @@ import pytest
 import requests
 
 from tests.utils.bank_requests import BankRequests
+from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.payment_requests import PaymentRequests
 from tests.utils.request_generator import RequestGenerator
 
@@ -58,3 +59,14 @@ def payments(api, client_token) -> PaymentRequests:
 @pytest.fixture(scope="session")
 def other_payments(api, bank) -> PaymentRequests:
     return PaymentRequests(api, bank.create_client_token())
+
+
+@pytest.fixture
+def payment_payload(bank, client_token):
+    def _build(token: str = None, **overrides) -> dict:
+        owner_token = token or client_token
+        company_key = bank.create_company(owner_token)
+        bank.open_account(company_key, owner_token)
+        return PayloadGenerator.create_payment_payload(company_key=company_key, **overrides)
+
+    return _build

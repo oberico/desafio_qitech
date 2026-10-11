@@ -15,7 +15,7 @@ class PaymentResource:
         idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1, max_length=50),
     ) -> JSONResponse:
         controller = PaymentController(get_context().session)
-        payment, created = controller.create(payload, idempotency_key, request.state.client_key)
+        payment, created = controller.create(payload, idempotency_key, request.state.client_key, request.state.companies)
         status_code = http_status.HTTP_201_CREATED if created else http_status.HTTP_200_OK
         return JSONResponse(content=jsonable_encoder(payment), status_code=status_code)
 

@@ -42,4 +42,5 @@ def register_client_auth_middleware(application: FastAPI) -> None:
             return qi_exception_to_response(InvalidClientToken())
 
         request.state.client_key = identity["client_key"]
+        request.state.companies = identity["companies"]
         return await call_next(request)

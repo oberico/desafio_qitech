@@ -9,6 +9,7 @@ from models import Account, AccountClass, AccountStatus
 from repositories import AccountRepository, CompanyRepository
 
 CLIENT_ACCOUNT_NORMAL_BALANCE = "c"
+CONSTRAINT_ERRORS = {"account_company_id_key": CompanyAlreadyHasAccount}
 
 
 class AccountController(BaseController):
@@ -33,7 +34,9 @@ class AccountController(BaseController):
             status=created,
             normal_balance=CLIENT_ACCOUNT_NORMAL_BALANCE,
         )
-        self.account_repository.create(account)
+        violated_constraint = self.account_repository.try_create(account)
+        if violated_constraint:
+            raise CONSTRAINT_ERRORS[violated_constraint]()
         self.account_repository.change_status(account, created)
 
         if self.bureau_connector.approves(company.cnpj):
