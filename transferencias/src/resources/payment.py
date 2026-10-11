@@ -23,3 +23,8 @@ class PaymentResource:
         controller = PaymentController(get_context().session)
         payment = controller.get_by_key(payment_key, request.state.client_key)
         return JSONResponse(content=jsonable_encoder(payment), status_code=http_status.HTTP_200_OK)
+
+    def on_post_refund(self, request: Request, payment_key: str) -> JSONResponse:
+        controller = PaymentController(get_context().session)
+        payment = controller.refund(payment_key, request.state.client_key)
+        return JSONResponse(content=jsonable_encoder(payment), status_code=http_status.HTTP_200_OK)

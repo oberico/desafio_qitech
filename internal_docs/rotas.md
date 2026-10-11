@@ -90,10 +90,40 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 |---|---|---|---|---|
 | 1 | POST | `/payments` | cliente | Registra venda; snapshota tarifa+janela; credita in_transit. Erros: `RNV001030`, `RNV001031`, `RNV001023`. |
 | 2 | GET | `/payments/{payment_key}` | cliente | Consulta pagamento; IDOR → `404 RNV001025`. |
-| 2 | POST | `/payments/{payment_key}/refund` | cliente | Reembolso; `409 RNV001026` fora da janela, `409 RNV001003` já estornado. Sem Idempotency-Key (estado `held`→`refunded` guarda). |
+| 2 | POST | `/payments/{payment_key}/refund` | cliente | Estorno cheio enquanto o payment está `held`; `409 RNV001026` se já `settled`, `409 RNV001003` se já estornado. Sem Idempotency-Key (estado `held`→`refunded` guarda). Contrato abaixo. |
 | 3 | GET | `/payments` | cliente | Lista paginada do lojista. |
 
 **Limite do `POST /payments`:** `amount_minor` deve ficar entre `1` e `9223372036854775807` (teto do `BIGINT`). `<= 0` ou acima do teto → `422 RNV001023`; antes desse limite o valor acima do teto virava `500`.
+
+**`POST /payments/{payment_key}/refund` — contrato completo.**
+
+- **Acesso:** cliente (`Authorization`). Sem corpo e **sem `Idempotency-Key`**. Não exige conta `active` do lojista: o estorno só movimenta contas internas, então `RNV001031` não se aplica.
+- **Resposta `200`:** o `PaymentDTO` do payment, com `status` `refunded`.
+
+Regra de janela por **status**, não por relógio (RFC v7.2: "o primeiro muda `held` para `refunded` ou `settled`; o segundo vê que já não é `held` e desiste"; "depois de `settled`, o estorno é recusado"):
+
+- `held`: estorna, **mesmo que `release_at` já tenha passado** e o job ainda não tenha rodado.
+- `settled`: `409 RNV001026` (valor já liberado).
+- `refunded`: `409 RNV001003`.
+
+Zona entre `release_at` e o job: enquanto o settlement não executa, o payment segue `held` e o dinheiro continua em `in_transit` (a taxa só é cobrada na liberação). Por isso o estorno ainda é possível e devolve o valor cheio. Quem decide é o status; o relógio não entra.
+
+Idempotência: não há chave. `held → refunded` é mão única, então o retry de um estorno já feito devolve `409 RNV001003` (**não** `200`), sem novo lançamento.
+
+Processamento:
+
+- `FOR UPDATE` na linha do `payment` e releitura do status. Resolve a corrida estorno × settlement: o payment termina `refunded` **ou** `settled`, nunca os dois.
+- Consulta a `payment_transition` antes de trocar o status.
+- Lançamento no Banco, tipo `refund`, `idempotency_key` `refund:<payment_key>` e `reverses_transaction_key` = `receipt` do payment. Entries: D `in_transit` amount, C `reserves` amount (**valor cheio**, sem taxa).
+- Grava `payment_status_event`.
+
+Erros:
+
+- `401 RNV000003`: token ausente ou inválido.
+- `404 RNV001025`: payment inexistente ou de outro cliente (IDOR).
+- `409 RNV001026`: payment já `settled`.
+- `409 RNV001003`: payment já `refunded`.
+- `503 RNV001017`: Banco indisponível ou sem resposta. O payment continua `held`; o retry é seguro (a chave `refund:<payment_key>` faz o Banco devolver o lançamento existente).
 
 ### Payout (saída de dinheiro)
 

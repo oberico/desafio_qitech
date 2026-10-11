@@ -38,6 +38,15 @@ class PaymentRepository:
             .first()
         )
 
+    def get_locked_by_key(self, payment_key: str, client_key: str) -> Payment:
+        return (
+            self.session.query(Payment)
+            .filter(Payment.payment_key == payment_key, Payment.client_key == client_key)
+            .with_for_update()
+            .populate_existing()
+            .first()
+        )
+
     def list_due_ids(self, status_id: int, as_of: datetime) -> list:
         rows = (
             self.session.query(Payment.id)

@@ -51,7 +51,7 @@ Totais executados (incluem casos parametrizados): Banco 195, Transferências 108
 | 10x a mesma Idempotency-Key (uma operação) | ✅ coberto | | feito |
 | N créditos simultâneos (todos entram, saldo = soma) | ⏳ pendente | Depende do `GET /accounts/{key}/balance` (item B1 pendente) | futuro |
 | Taxa snapshotada (muda a taxa entre chegada e liberação, cobra a antiga) | ✅ coberto | Via `PUT /internal/payment-methods/{method}`; testes em `transferencias/tests/integration/payment_method/` (branch `feature/payment-method-versioning`); `test_payment_method_snapshot.py::test_settlement_charges_the_old_fee_after_the_fee_changed` e `test_changing_the_window_does_not_move_an_existing_release_at` | feito |
-| Estorno cheio na janela, recusado depois de `settled` | ⏳ pendente | Slice T3 (refund) | futuro |
+| Estorno cheio na janela, recusado depois de `settled` | ✅ coberto | Branch `feature/payment-refund`; `refund/test_payment_refund.py`: `test_refunds_a_held_payment`, `test_settled_payment_cannot_be_refunded`, `test_second_refund_is_refused`, `test_ten_simultaneous_refunds_yield_a_single_success` e `test_refund_racing_the_settlement_job_has_a_single_winner` | feito |
 | 3 timeouts de payout viram `failed` + reversal devolve o dinheiro | ⏳ pendente | Slice T6 (reconcile do payout) | futuro |
 
 ## 4. Casos de borda sondados
@@ -85,7 +85,7 @@ Totais executados (incluem casos parametrizados): Banco 195, Transferências 108
 | `debit_minor`/`credit_minor` de `1` a `9223372036854775807` (teto do BIGINT) | Banco `POST /ledger/transactions` | `400 RNV000001` (JSON Schema) |
 | `entries` de `2` a `20` itens (transação real tem no máximo 4) | Banco `POST /ledger/transactions` | `400 RNV000001` |
 | `amount_minor` acima de `9223372036854775807` | Transferências `POST /payments` | `422 RNV001023` (código existente, que já cobria `<= 0`) |
-
+| `POST /payments/{payment_key}/refund` decide pelo **status**, não pelo relógio: estorna enquanto `held` (mesmo após `release_at`, antes do job); `settled` recusa. Sem `Idempotency-Key`: `held → refunded` é mão única e o retry devolve `409` | Transferências `POST /payments/{payment_key}/refund` | `409 RNV001026` (já `settled`), `409 RNV001003` (já `refunded`), `404 RNV001025`, `503 RNV001017` |
 | `PUT /internal/payment-methods/{method}` versiona (append-only) em vez de `UPDATE`; valores iguais à versão atual não criam versão (`200`), mudança cria (`201`) | Transferências `PUT /internal/payment-methods/{method}` | `400 RNV000001` (JSON Schema), `403 RNV000002` |
 
 Documentadas em `rotas.md` e `catalogo-de-erros.md`. Nenhum código novo foi criado.
@@ -124,3 +124,5 @@ Documentadas em `rotas.md` e `catalogo-de-erros.md`. Nenhum código novo foi cri
 > Depois dos testes novos desta branch: Banco 270 e Transferências 111 casos executados (mais 6 `fault`), external-mocks 36. Débitos duplicados na mesma conta somam: `test_refuses_duplicate_debits_exceeding_balance` e `test_accepts_duplicate_debits_within_balance`.
 
 > Taxa versionada: Transferências 151 casos executados (mais 6 `fault`) e Banco 270.
+
+> Com o refund (T3): Transferências 173 casos executados (mais 8 `fault`) e Banco 270.

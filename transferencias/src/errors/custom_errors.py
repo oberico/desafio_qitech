@@ -142,3 +142,25 @@ class AccountNotActive(QIException):
         description = "The account is not active, so this operation is not allowed."
         translation = "A conta não está ativa, por isso esta operação não é permitida."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class PaymentOutsideWindow(QIException):
+    code = "RNV001026"
+
+    def __init__(self) -> None:
+        title = "Outside Refund Window"
+        http_status = 409
+        description = "The payment was already released to the account and can no longer be refunded."
+        translation = "O pagamento já foi liberado para a conta e não pode mais ser estornado."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class PaymentAlreadyRefunded(QIException):
+    code = "RNV001003"
+
+    def __init__(self) -> None:
+        title = "Payment Already Refunded"
+        http_status = 409
+        description = "The payment was already refunded."
+        translation = "O pagamento já foi estornado."
+        super().__init__(title, self.code, http_status, description, translation)

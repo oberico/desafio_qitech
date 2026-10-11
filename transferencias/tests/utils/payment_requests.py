@@ -15,5 +15,8 @@ class PaymentRequests:
     def get_payment(self, payment_key: str) -> tuple:
         return self.api.get(f"/payments/{payment_key}", self._auth())
 
+    def refund_payment(self, payment_key: str) -> tuple:
+        return self.api.post(f"/payments/{payment_key}/refund", None, self._auth())
+
     def _auth(self) -> dict:
         return {"Authorization": f"Bearer {self.client_token}"}

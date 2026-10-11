@@ -66,5 +66,6 @@ application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"
 application.add_api_route("/health_check", health_check_resource.on_get_health_check, methods=["GET"])
 application.add_api_route("/payments", payment_resource.on_post, methods=["POST"])
 application.add_api_route("/payments/{payment_key}", payment_resource.on_get_by_key, methods=["GET"])
+application.add_api_route("/payments/{payment_key}/refund", payment_resource.on_post_refund, methods=["POST"])
 application.add_api_route("/internal/settlements", settlement_resource.on_post, methods=["POST"])
 application.add_api_route("/internal/payment-methods/{method}", payment_method_resource.on_put, methods=["PUT"])
