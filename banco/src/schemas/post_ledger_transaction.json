@@ -17,13 +17,14 @@
     "entries": {
       "type": "array",
       "minItems": 2,
+      "maxItems": 20,
       "items": {
         "type": "object",
         "properties": {
           "account_code": {"type": "string", "enum": ["reserves", "in_transit", "revenue"]},
           "account_key": {"type": "string", "pattern": "^[0-9a-fA-F-]{36}$"},
-          "debit_minor": {"type": "integer", "minimum": 1},
-          "credit_minor": {"type": "integer", "minimum": 1}
+          "debit_minor": {"type": "integer", "minimum": 1, "maximum": 9223372036854775807},
+          "credit_minor": {"type": "integer", "minimum": 1, "maximum": 9223372036854775807}
         },
         "allOf": [
           {"oneOf": [{"required": ["account_code"]}, {"required": ["account_key"]}]},

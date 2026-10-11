@@ -22,6 +22,7 @@ from utils.schema_handler import validate_json
 
 POST_PAYMENT_SCHEMA = os.path.join(SCHEMAS_DIR, "post_payment.json")
 ACTIVE_ACCOUNT_STATUS = "active"
+MAX_AMOUNT_MINOR = 9223372036854775807
 
 
 class PaymentController(BaseController):
@@ -34,7 +35,7 @@ class PaymentController(BaseController):
         validate_json(payload, POST_PAYMENT_SCHEMA)
         account_key = self._authorized_account_key(payload["company_key"], companies)
 
-        if payload["amount_minor"] <= 0:
+        if not 0 < payload["amount_minor"] <= MAX_AMOUNT_MINOR:
             raise InvalidAmount(payload["amount_minor"])
 
         method = self.payment_repository.get_method(payload["method"])
