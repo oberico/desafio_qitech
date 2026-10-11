@@ -35,6 +35,25 @@ class TestAccountClose:
         assert status == 200
         assert response["account_status"] == "closed"
 
+    def test_refuses_closing_an_already_closed_account(self, accounts, active_account, client_token):
+        status, _ = accounts.close(active_account, client_token)
+        assert status == 200
+
+        status, response = accounts.close(active_account, client_token)
+        assert status == 409
+        assert response["code"] == "RNV001009"
+
+    def test_refuses_closing_a_rejected_account(self, accounts, open_account, client_token):
+        account_key = open_account(client_token, RandomGenerator.cnpj_rejected_by_bureau())
+
+        status, response = accounts.close(account_key, client_token)
+        assert status == 409
+        assert response["code"] == "RNV001009"
+
+        status, response = accounts.get_account(account_key, client_token)
+        assert status == 200
+        assert response["status"] == "rejected"
+
     def test_account_of_another_client_looks_nonexistent(self, accounts, active_account, other_client_token):
         status, response = accounts.close(active_account, other_client_token)
         assert status == 404
