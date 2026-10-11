@@ -2,7 +2,7 @@ import threading
 import uuid
 
 
-class TransferRepository:
+class InterbankTransferRepository:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._transfer_ids = {}
@@ -20,4 +20,4 @@ class TransferRepository:
             return self._flaky_calls[payout_key]
 
 
-transfer_repository = TransferRepository()
+interbank_transfer_repository = InterbankTransferRepository()

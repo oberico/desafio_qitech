@@ -1,12 +1,12 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from controllers import TransferController
+from controllers import InterbankTransferController
 
 
-class TransferResource:
+class InterbankTransferResource:
     def __init__(self) -> None:
-        self.controller = TransferController()
+        self.controller = InterbankTransferController()
 
     async def on_post(self, request: Request) -> JSONResponse:
         outcome = await self.controller.create(await request.body())
