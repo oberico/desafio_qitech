@@ -28,6 +28,14 @@ def company_with_closed_account(bank, client_token):
     return company_key
 
 
+@pytest.fixture
+def company_with_blocked_account(bank, client_token, internal_token):
+    company_key = bank.create_company(client_token)
+    account = bank.open_account(company_key, client_token)
+    bank.block_account(account["account_key"], internal_token)
+    return company_key
+
+
 class TestPaymentAuthorization:
     def test_refuses_company_of_another_client(self, payments, other_payments, payment_payload):
         payload = payment_payload()
@@ -48,7 +56,9 @@ class TestPaymentAuthorization:
         assert response["code"] == "RNV001030"
 
     @pytest.mark.parametrize(
-        "company_fixture", ["company_with_rejected_account", "company_with_closed_account"], ids=["rejected", "closed"]
+        "company_fixture",
+        ["company_with_rejected_account", "company_with_closed_account", "company_with_blocked_account"],
+        ids=["rejected", "closed", "blocked"],
     )
     def test_refuses_company_whose_account_is_not_active(self, payments, request, company_fixture):
         company_key = request.getfixturevalue(company_fixture)
@@ -56,6 +66,20 @@ class TestPaymentAuthorization:
         status, response = payments.post_payment(payload, str(uuid4()))
         assert status == 403
         assert response["code"] == "RNV001031"
+
+    def test_accepts_payment_again_after_the_account_is_unblocked(self, bank, client_token, internal_token, payments):
+        company_key = bank.create_company(client_token)
+        account = bank.open_account(company_key, client_token)
+        payload = PayloadGenerator.create_payment_payload(company_key=company_key)
+
+        bank.block_account(account["account_key"], internal_token)
+        status, response = payments.post_payment(payload, str(uuid4()))
+        assert status == 403
+        assert response["code"] == "RNV001031"
+
+        bank.unblock_account(account["account_key"], internal_token)
+        status, _ = payments.post_payment(payload, str(uuid4()))
+        assert status == 201
 
     def test_refusal_has_exactly_the_four_error_fields(self, payments, company_without_account):
         payload = PayloadGenerator.create_payment_payload(company_key=company_without_account)

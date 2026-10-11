@@ -1,16 +1,17 @@
 CREATE TABLE payment_method(
     id                              SERIAL PRIMARY KEY,
     enumerator                      VARCHAR(50) NOT NULL,
-    fee_bps                         INTEGER NOT NULL CHECK (fee_bps >= 0),
-    release_window_hours            INTEGER NOT NULL CHECK (release_window_hours >= 0),
+    version                         INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+    fee_bps                         INTEGER NOT NULL CHECK (fee_bps BETWEEN 0 AND 10000),
+    release_window_hours            INTEGER NOT NULL CHECK (release_window_hours BETWEEN 0 AND 8760),
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-    UNIQUE(enumerator)
+    UNIQUE(enumerator, version)
 );
 
-INSERT INTO payment_method (enumerator, fee_bps, release_window_hours) VALUES
-('pix', 99, 24),
-('boleto', 199, 72),
-('card', 499, 720);
+INSERT INTO payment_method (enumerator, version, fee_bps, release_window_hours) VALUES
+('pix', 1, 99, 24),
+('boleto', 1, 199, 72),
+('card', 1, 499, 720);
 
 CREATE TABLE payment_status(
     id                              SERIAL PRIMARY KEY,

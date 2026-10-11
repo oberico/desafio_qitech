@@ -48,6 +48,11 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 |---|---|---|---|---|
 | 1 | POST | `/ledger/transactions` | serviço | Lançamento idempotente de partida dobrada. Valida fechamento e dedupe. |
 
+**Limites do `POST /ledger/transactions`** (JSON Schema na porta, `400 RNV000001`):
+
+- `debit_minor` e `credit_minor`: inteiros de `1` a `9223372036854775807` (teto do `BIGINT`). Acima do teto → `400 RNV000001`; antes desse limite o estouro virava `500`.
+- `entries`: de `2` a `20` itens (uma transação real tem no máximo 4). Fora da faixa → `400 RNV000001`.
+
 ### Internal (bloqueio por serviço/admin)
 
 | Prioridade | Método | Rota | Acesso | Justificativa |
@@ -88,6 +93,8 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 | 2 | POST | `/payments/{payment_key}/refund` | cliente | Reembolso; `409 RNV001026` fora da janela, `409 RNV001003` já estornado. Sem Idempotency-Key (estado `held`→`refunded` guarda). |
 | 3 | GET | `/payments` | cliente | Lista paginada do lojista. |
 
+**Limite do `POST /payments`:** `amount_minor` deve ficar entre `1` e `9223372036854775807` (teto do `BIGINT`). `<= 0` ou acima do teto → `422 RNV001023`; antes desse limite o valor acima do teto virava `500`.
+
 ### Payout (saída de dinheiro)
 
 | Prioridade | Método | Rota | Acesso | Justificativa |
@@ -101,6 +108,24 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 |---|---|---|---|---|
 | 1 | POST | `/internal/settlements` | serviço | Job de liberação: in_transit → cliente ao fim da janela. |
 | 2 | POST | `/internal/payouts/reconcile` | serviço | Job de reconciliação do payout (confirma/falha; reversal ao falhar). |
+| 2 | PUT | `/internal/payment-methods/{method}` | serviço | Define taxa e janela de um meio de pagamento, versionando (append-only). |
+
+**`PUT /internal/payment-methods/{method}` — contrato completo.**
+
+- **Acesso:** só `INTERNAL-TOKEN`; sem ele, `403 RNV000002`.
+- **`{method}`:** `pix`, `boleto` ou `card`. Fora do enum → `400 RNV000001`.
+- **Corpo** (JSON Schema na porta, ambos obrigatórios, sem campo extra): `{"fee_bps": <int 0..10000>, "release_window_hours": <int 0..8760>}`. Tipo errado, campo ausente, campo extra ou valor fora da faixa → `400 RNV000001`.
+- **Resposta:** `{"method", "version", "fee_bps", "release_window_hours", "created_at"}`.
+  - `201`: os valores diferem da versão atual e uma **nova versão** foi gravada.
+  - `200`: os valores são **iguais** aos da versão atual; nada é gravado e a resposta é a versão atual (idempotente).
+
+Versionamento:
+
+- **Append-only:** nunca há `UPDATE` em `payment_method`. Cada mudança grava uma nova linha com `version` incrementada; a versão **atual** é a de maior `version`.
+- **Concorrência:** escritas simultâneas no mesmo método são serializadas por lock na linha da versão atual, então a comparação "igual à atual?" e o incremento de `version` não correm em paralelo.
+- **Snapshot no `payment`:** o `payment` guarda a versão usada (FK para a linha de `payment_method`) e **copia** `fee_bps` e `release_at`. Mudar o método **nunca** altera payments já criados nem o que é cobrado deles: cobra-se a taxa informada ao cliente na venda. O settle continua usando só o snapshot.
+- **Teto de `release_window_hours` (8760 h, 1 ano):** decisão de projeto. Protege contra overflow de data no cálculo de `release_at` e fica muito acima da maior janela atual (720 h).
+- **`fee_bps <= 10000`:** também é `CHECK` na tabela. Sem ele, `fee_bps` acima de 10000 faria o cálculo da tarifa (`split_fee`) levantar `ValueError`, o que daria `500` e abortaria o run inteiro do job de settlement.
 
 **`as_of` nos jobs.** Os dois endpoints aceitam corpo opcional para injetar o "agora", de modo que testes e operação não precisem esperar a janela (24h/72h/720h) nem o backoff:
 
@@ -113,6 +138,33 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 - **Acesso:** só existe em `/internal/*` (`INTERNAL-TOKEN`; sem ele, `403 RNV000002`). **Nunca** é aceito em rota de cliente: serve a testes e operação, não ao produto.
 - **`POST /internal/settlements`:** libera os `payment` em `held` com `release_at <= as_of`. A chave determinística (`settlement:<payment_key>`) e o `FOR UPDATE` na linha do `payment` continuam valendo; rodar de novo com o mesmo `as_of` é no-op.
 - **`POST /internal/payouts/reconcile`:** `as_of` é o "agora" que decide se a próxima tentativa/backoff do payout já venceu (`last_attempt_at` + espera) e o `now` gravado ao registrar a `payout_attempt`.
+
+**`POST /internal/settlements` — contrato completo.**
+
+Resposta `200`:
+
+```json
+{"as_of": "2026-10-12T15:00:00+00:00", "settled": ["<payment_key>"], "deferred": ["<payment_key>"]}
+```
+
+- `as_of`: o instante efetivamente usado (o enviado, ou o relógio do servidor se ausente), ISO 8601.
+- `settled`: `payment_key` dos payments liberados neste run.
+- `deferred`: payments vencidos (`release_at <= as_of`) que **continuam `held`** porque o Banco recusou por regra (ex.: conta do lojista bloqueada ou encerrada, `RNV001005`) ou estava indisponível. O próximo run tenta de novo.
+- Payment que, ao ser relido, já não está `held` (já liberado ou estornado) não aparece em nenhuma lista. Não há lista de erros por item.
+
+Processamento:
+
+- Cada payment roda em **transação própria**: um lojista com problema não trava os demais.
+- A tarifa vem **sempre do snapshot** do payment: `fee = (amount_minor * fee_bps + 9999) // 10000`, `net = amount_minor - fee`.
+- Lançamento no Banco com `idempotency_key` `settlement:<payment_key>`: D `in_transit` net, D `in_transit` fee, C conta do lojista net, C `revenue` fee. Pernas de valor 0 são **omitidas** (o Banco exige >= 1 por perna; ex.: `amount_minor` 1 com 99 bps dá fee 1 e net 0, então só existem as pernas de fee).
+
+Erros do job:
+
+- `403 RNV000002`: sem `INTERNAL-TOKEN`.
+- `400 RNV000001`: `as_of` inválido.
+- Falhas do Banco por item **não** viram erro HTTP: o payment vai para `deferred`.
+
+Idempotência: rodar de novo é seguro. A chave é determinística; o Banco devolve o lançamento existente e o payment é levado a `settled`.
 
 O mock interbancário que o reconcile chama (`POST /interbank/transfers` no `external-mocks`) está em `mocks-externos.md`.
 
@@ -134,3 +186,5 @@ O mock interbancário que o reconcile chama (`POST /interbank/transfers` no `ext
 - `as_of` opcional no corpo de `POST /internal/settlements` e `POST /internal/payouts/reconcile`: refino
   em cima da RFC v7.2, que não menciona `as_of` (ela fala só em "o relógio" e "quando `release_at` vence").
   Sem o campo, nada muda; existe para testar sem esperar a janela. Só com `INTERNAL-TOKEN`.
+  Em operação, o prazo definido nas tabelas (`release_window_hours` do `payment_method`) é o que prevalece.
+- `PUT /internal/payment-methods/{method}`: versiona taxa e janela (append-only); a RFC v7.2 trata `payment_method` como tabela com snapshot no `payment`, mas não cita a rota nem o versionamento.

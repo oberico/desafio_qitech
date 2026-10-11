@@ -1,0 +1,9 @@
+{
+  "title": "PaymentMethodEnumerator",
+  "type": "string",
+  "enum": [
+    "pix",
+    "boleto",
+    "card"
+  ]
+}
