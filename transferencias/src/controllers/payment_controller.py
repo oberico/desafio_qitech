@@ -5,13 +5,21 @@ from uuid import uuid4
 from constants import SCHEMAS_DIR
 from controllers.base_controller import BaseController
 from dtos import PaymentDTO
-from errors import IdempotencyKeyReused, InvalidAmount, NotFoundPayment
+from errors import (
+    AccountNotActive,
+    CompanyWithoutAccount,
+    IdempotencyKeyReused,
+    InvalidAmount,
+    NotFoundCompany,
+    NotFoundPayment,
+)
 from models import Payment, PaymentStatus
 from repositories import PaymentRepository
 from utils.payload_hash import payload_hash
 from utils.schema_handler import validate_json
 
 POST_PAYMENT_SCHEMA = os.path.join(SCHEMAS_DIR, "post_payment.json")
+ACTIVE_ACCOUNT_STATUS = "active"
 
 
 class PaymentController(BaseController):
@@ -19,8 +27,9 @@ class PaymentController(BaseController):
         super().__init__(session)
         self.payment_repository = PaymentRepository(session)
 
-    def create(self, payload: dict, idempotency_key: str, client_key: str) -> tuple:
+    def create(self, payload: dict, idempotency_key: str, client_key: str, companies: list) -> tuple:
         validate_json(payload, POST_PAYMENT_SCHEMA)
+        account_key = self._authorized_account_key(payload["company_key"], companies)
 
         if payload["amount_minor"] <= 0:
             raise InvalidAmount(payload["amount_minor"])
@@ -32,7 +41,7 @@ class PaymentController(BaseController):
             payment_key=str(uuid4()),
             client_key=client_key,
             company_key=payload["company_key"].lower(),
-            account_key=payload["account_key"].lower(),
+            account_key=account_key,
             method=method,
             status=status,
             amount_minor=payload["amount_minor"],
@@ -61,10 +70,20 @@ class PaymentController(BaseController):
 
         return PaymentDTO.obj_to_dict(payment)
 
+    @staticmethod
+    def _authorized_account_key(company_key: str, companies: list) -> str:
+        company = next((item for item in companies if item["company_key"] == company_key.lower()), None)
+        if company is None:
+            raise NotFoundCompany(company_key)
+        if company["account_key"] is None:
+            raise CompanyWithoutAccount()
+        if company["account_status"] != ACTIVE_ACCOUNT_STATUS:
+            raise AccountNotActive()
+        return company["account_key"]
+
     def _meaningful_fields(self, payload: dict) -> dict:
         return {
             "company_key": payload["company_key"].lower(),
-            "account_key": payload["account_key"].lower(),
             "amount_minor": payload["amount_minor"],
             "method": payload["method"],
         }

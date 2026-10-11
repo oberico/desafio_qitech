@@ -8,7 +8,6 @@ class PayloadGenerator:
             "amount_minor": RandomGenerator.amount_minor(),
             "method": "pix",
             "company_key": RandomGenerator.uuid(),
-            "account_key": RandomGenerator.uuid(),
         }
         payload.update(overrides)
         return payload
@@ -20,6 +19,15 @@ class PayloadGenerator:
             "name": "Fulana de Tal",
             "birthdate": "1990-05-17",
             "email": RandomGenerator.email(),
+        }
+        payload.update(overrides)
+        return payload
+
+    @staticmethod
+    def create_company_payload(**overrides) -> dict:
+        payload = {
+            "cnpj": RandomGenerator.cnpj(),
+            "legal_name": "Loja da Fulana LTDA",
         }
         payload.update(overrides)
         return payload

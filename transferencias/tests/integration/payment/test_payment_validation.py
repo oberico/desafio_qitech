@@ -3,6 +3,7 @@ from uuid import uuid4
 import pytest
 
 from tests.utils.payload_generator import PayloadGenerator
+from tests.utils.random_generator import RandomGenerator
 
 ERROR_FIELDS = {"title", "description", "translation", "code"}
 
@@ -22,7 +23,7 @@ INVALID_BODIES = {
     "fractional_amount": lambda: PayloadGenerator.create_payment_payload(amount_minor=110.5),
     "float_typed_whole_amount": lambda: PayloadGenerator.create_payment_payload(amount_minor=110.0),
     "malformed_company_key": lambda: PayloadGenerator.create_payment_payload(company_key="x" * 36),
-    "malformed_account_key": lambda: PayloadGenerator.create_payment_payload(account_key="x" * 36),
+    "account_key_in_body": lambda: PayloadGenerator.create_payment_payload(account_key=RandomGenerator.uuid()),
 }
 
 
@@ -57,8 +58,8 @@ class TestPaymentValidation:
         assert set(response) == ERROR_FIELDS
         assert all(response[field] for field in ERROR_FIELDS)
 
-    def test_refuses_invalid_amount(self, payments):
-        payload = PayloadGenerator.create_payment_payload(amount_minor=0)
+    def test_refuses_invalid_amount(self, payments, payment_payload):
+        payload = payment_payload(amount_minor=0)
         status, response = payments.post_payment(payload, str(uuid4()))
         assert status == 422
         assert response["code"] == "RNV001023"
