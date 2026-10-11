@@ -6,9 +6,11 @@ import requests
 from tests.utils.account_requests import AccountRequests
 from tests.utils.client_requests import ClientRequests
 from tests.utils.company_requests import CompanyRequests
+from tests.utils.ledger_requests import LedgerRequests
 from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.random_generator import RandomGenerator
 from tests.utils.request_generator import RequestGenerator
+
 
 BANCO_API_URL = os.getenv("BANCO_API_URL", "http://localhost:8001")
 INTERNAL_TOKEN = os.getenv("INTERNAL_TOKEN", "internal-token-dev")
@@ -68,6 +70,9 @@ def other_client_token(clients) -> str:
 def companies(api) -> CompanyRequests:
     return CompanyRequests(api)
 
+@pytest.fixture(scope="session")
+def ledger(api, internal_token) -> LedgerRequests:
+    return LedgerRequests(api, internal_token)
 
 @pytest.fixture(scope="session")
 def accounts(api) -> AccountRequests:
