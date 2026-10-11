@@ -6,6 +6,7 @@ import requests
 from tests.utils.account_requests import AccountRequests
 from tests.utils.client_requests import ClientRequests
 from tests.utils.company_requests import CompanyRequests
+from tests.utils.internal_account_requests import InternalAccountRequests
 from tests.utils.ledger_requests import LedgerRequests
 from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.random_generator import RandomGenerator
@@ -37,6 +38,18 @@ def api(api_url, api_is_up) -> RequestGenerator:
 @pytest.fixture(scope="session")
 def internal_token() -> str:
     return INTERNAL_TOKEN
+
+
+@pytest.fixture(scope="session")
+def internal_accounts(api, internal_token) -> InternalAccountRequests:
+    return InternalAccountRequests(api, internal_token)
+
+
+@pytest.fixture(scope="session")
+def internal_account_keys(internal_accounts) -> dict:
+    status, response = internal_accounts.list_internal_accounts()
+    assert status == 200, f"could not list the internal accounts: {status} {response}"
+    return {account["code"]: account["account_key"] for account in response}
 
 
 @pytest.fixture(scope="session")

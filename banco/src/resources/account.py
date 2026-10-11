@@ -22,3 +22,8 @@ class AccountResource:
         controller = AccountController(get_context().session)
         account = controller.close(account_key, request.state.client_id)
         return JSONResponse(content=jsonable_encoder(account), status_code=http_status.HTTP_200_OK)
+
+    def on_get_internal(self) -> JSONResponse:
+        controller = AccountController(get_context().session)
+        accounts = controller.list_internal()
+        return JSONResponse(content=jsonable_encoder(accounts), status_code=http_status.HTTP_200_OK)

@@ -61,6 +61,7 @@
 | RNV001016 | 404 | Transação referenciada inexistente |
 | RNV001024 | 422 | Idempotency-Key reusada com conteúdo diferente |
 | RNV001033 | 422 | Transação referenciada de tipo incompatível (settlement liquida `receipt`/`payout`; refund estorna `receipt`; reversal estorna `payout`) |
+| RNV001034 | 422 | Conta interna referenciada por `account_key` (`reserves`, `in_transit` e `revenue` só entram por `account_code`) |
 
 ## Pagamento (venda)
 

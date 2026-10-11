@@ -76,3 +76,14 @@ class InvalidTransactionReference(QIException):
         description = f"The transaction {transaction_key} is a {transaction_type} and cannot be referenced by this operation."
         translation = f"A transação {transaction_key} é do tipo {transaction_type} e não pode ser referenciada por esta operação."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class InternalAccountNotAllowed(QIException):
+    code = "RNV001034"
+
+    def __init__(self, account_key: str) -> None:
+        title = "Internal Account not Allowed"
+        http_status = 422
+        description = f"The account {account_key} is internal and can only be referenced by account_code."
+        translation = f"A conta {account_key} é interna e só pode ser referenciada por account_code."
+        super().__init__(title, self.code, http_status, description, translation)
