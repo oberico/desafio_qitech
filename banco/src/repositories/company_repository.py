@@ -26,11 +26,16 @@ class CompanyRepository:
     def exists_with_cnpj(self, cnpj: str) -> bool:
         return self.session.query(Company.id).filter(Company.cnpj == cnpj).first() is not None
 
-    def create(self, company: Company) -> None:
-        self.session.add(company)
-        self.session.flush()
+    def try_create(self, company: Company) -> str:
+        try:
+            self.session.add(company)
+            self.session.flush()
+        except IntegrityError as error:
+            self.session.rollback()
+            return self._violated_constraint(error) or "unknown"
+        return None
 
     @staticmethod
-    def violated_constraint(error: IntegrityError) -> str:
+    def _violated_constraint(error: IntegrityError) -> str:
         diag = getattr(error.orig, "diag", None)
         return getattr(diag, "constraint_name", None)

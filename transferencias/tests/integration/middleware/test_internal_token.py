@@ -14,9 +14,8 @@ REFUSED_REQUESTS = {
 }
 
 PUBLIC_REQUESTS = {
-    "health_check": ("GET", "/health_check", None, None, 204),
-    "root": ("GET", "/", None, None, 200),
-    "create_payment": ("POST", "/payments", PayloadGenerator.create_payment_payload, {"Idempotency-Key": RandomGenerator.uuid()}, 201),
+    "health_check": ("GET", "/health_check", 204),
+    "root": ("GET", "/", 200),
 }
 
 
@@ -37,8 +36,11 @@ class TestInternalToken:
         assert response["code"] == "RNV000004"
         assert set(response.keys()) == ERROR_FIELDS
 
-    @pytest.mark.parametrize("method, path, build_body, headers, expected_status", PUBLIC_REQUESTS.values(), ids=PUBLIC_REQUESTS.keys())
-    def test_public_routes_do_not_require_token(self, api, method, path, build_body, headers, expected_status):
-        body = build_body() if build_body else None
-        status = api.request_with_headers(method, path, body, headers)[0]
+    @pytest.mark.parametrize("method, path, expected_status", PUBLIC_REQUESTS.values(), ids=PUBLIC_REQUESTS.keys())
+    def test_public_routes_do_not_require_token(self, api, method, path, expected_status):
+        status = api.request_with_headers(method, path)[0]
         assert status == expected_status
+
+    def test_payments_route_does_not_require_internal_token(self, payments):
+        status, _ = payments.post_payment(PayloadGenerator.create_payment_payload(), RandomGenerator.uuid())
+        assert status == 201
