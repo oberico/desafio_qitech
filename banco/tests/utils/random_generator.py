@@ -1,6 +1,8 @@
 import random
 from uuid import uuid4
 
+BUREAU_REJECTED_SUFFIX = "-00"
+
 
 class RandomGenerator:
     @staticmethod
@@ -26,6 +28,20 @@ class RandomGenerator:
 
     @staticmethod
     def cnpj() -> str:
+        while True:
+            cnpj = RandomGenerator._any_cnpj()
+            if not cnpj.endswith(BUREAU_REJECTED_SUFFIX):
+                return cnpj
+
+    @staticmethod
+    def cnpj_rejected_by_bureau() -> str:
+        while True:
+            cnpj = RandomGenerator._any_cnpj()
+            if cnpj.endswith(BUREAU_REJECTED_SUFFIX):
+                return cnpj
+
+    @staticmethod
+    def _any_cnpj() -> str:
         digits = [random.randint(0, 9) for _ in range(12)]
         for weights in ([5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]):
             remainder = sum(d * w for d, w in zip(digits, weights)) % 11

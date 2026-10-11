@@ -15,6 +15,14 @@ class CompanyRepository:
             .first()
         )
 
+    def lock_by_key_and_client(self, company_key: str, client_id: int) -> Company:
+        return (
+            self.session.query(Company)
+            .filter(Company.company_key == company_key.lower(), Company.client_id == client_id)
+            .with_for_update()
+            .first()
+        )
+
     def exists_with_cnpj(self, cnpj: str) -> bool:
         return self.session.query(Company.id).filter(Company.cnpj == cnpj).first() is not None
 

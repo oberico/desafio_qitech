@@ -3,9 +3,11 @@ import os
 import pytest
 import requests
 
+from tests.utils.account_requests import AccountRequests
 from tests.utils.client_requests import ClientRequests
 from tests.utils.company_requests import CompanyRequests
 from tests.utils.payload_generator import PayloadGenerator
+from tests.utils.random_generator import RandomGenerator
 from tests.utils.request_generator import RequestGenerator
 
 BANCO_API_URL = os.getenv("BANCO_API_URL", "http://localhost:8001")
@@ -65,3 +67,35 @@ def other_client_token(clients) -> str:
 @pytest.fixture(scope="session")
 def companies(api) -> CompanyRequests:
     return CompanyRequests(api)
+
+
+@pytest.fixture(scope="session")
+def accounts(api) -> AccountRequests:
+    return AccountRequests(api)
+
+
+@pytest.fixture
+def create_company(companies):
+    def _create(token: str, cnpj: str = None) -> str:
+        payload = PayloadGenerator.create_company_payload(cnpj=cnpj or RandomGenerator.cnpj())
+        status, response = companies.post_company(payload, token)
+        assert status == 201, f"não deu para criar a empresa do cenário: {status} {response}"
+        return response["company_key"]
+
+    return _create
+
+
+@pytest.fixture
+def open_account(accounts, create_company):
+    def _open(token: str, cnpj: str = None) -> str:
+        company_key = create_company(token, cnpj)
+        status, response = accounts.post_account(company_key, token)
+        assert status == 201, f"não deu para abrir a conta do cenário: {status} {response}"
+        return response["account_key"]
+
+    return _open
+
+
+@pytest.fixture
+def active_account(open_account, client_token) -> str:
+    return open_account(client_token)
