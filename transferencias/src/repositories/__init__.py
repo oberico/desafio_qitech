@@ -1,1 +1,2 @@
 from repositories.payment_repository import PaymentRepository
+from repositories.payment_transition_repository import PaymentTransitionRepository

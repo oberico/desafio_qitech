@@ -14,7 +14,7 @@ from middlewares import (
     register_request_logger_middleware,
     register_session_manager_middleware,
 )
-from resources import HealthCheckResource, PaymentResource
+from resources import HealthCheckResource, PaymentResource, SettlementResource
 from utils.logger import setup_logging
 
 setup_logging()
@@ -59,8 +59,10 @@ register_request_context_middleware(application)
 
 health_check_resource = HealthCheckResource()
 payment_resource = PaymentResource()
+settlement_resource = SettlementResource()
 
 application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
 application.add_api_route("/health_check", health_check_resource.on_get_health_check, methods=["GET"])
 application.add_api_route("/payments", payment_resource.on_post, methods=["POST"])
 application.add_api_route("/payments/{payment_key}", payment_resource.on_get_by_key, methods=["GET"])
+application.add_api_route("/internal/settlements", settlement_resource.on_post, methods=["POST"])

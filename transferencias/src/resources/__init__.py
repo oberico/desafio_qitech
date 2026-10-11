@@ -1,2 +1,3 @@
 from resources.health_check import HealthCheckResource
 from resources.payment import PaymentResource
+from resources.settlement import SettlementResource
