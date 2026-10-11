@@ -2,22 +2,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from tests.utils.ledger_requests import REFERENCE_FIELD
 from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.random_generator import RandomGenerator
-
-
-REFERENCE_FIELD = {"settlement": "settles_transaction_key", "refund": "reverses_transaction_key", "reversal": "reverses_transaction_key"}
-TARGET_PARENT = {"settlement": "receipt", "refund": "receipt", "reversal": "payout"}
-
-
-def create_transaction(ledger, type: str) -> str:
-    references = {}
-    if type in REFERENCE_FIELD:
-        references[REFERENCE_FIELD[type]] = create_transaction(ledger, TARGET_PARENT[type])
-    payload = PayloadGenerator.create_ledger_transaction_payload(type=type, **references)
-    status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
-    assert status == 201, f"could not create the {type} of the scenario: {status} {response}"
-    return response["transaction_key"]
 
 
 class TestLedgerTransactionCreate:
@@ -263,7 +250,7 @@ class TestLedgerTransactionCreate:
         ],
     )
     def test_refuses_reference_to_wrong_transaction_type(self, ledger, type, target_type):
-        target_key = create_transaction(ledger, target_type)
+        target_key = ledger.create_transaction(target_type)
         payload = PayloadGenerator.create_ledger_transaction_payload(type=type, **{REFERENCE_FIELD[type]: target_key})
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 422
@@ -271,7 +258,7 @@ class TestLedgerTransactionCreate:
 
     @pytest.mark.parametrize("type, target_type", [("settlement", "receipt"), ("settlement", "payout"), ("refund", "receipt"), ("reversal", "payout")])
     def test_accepts_reference_to_matching_transaction_type(self, ledger, type, target_type):
-        target_key = create_transaction(ledger, target_type)
+        target_key = ledger.create_transaction(target_type)
         payload = PayloadGenerator.create_ledger_transaction_payload(type=type, **{REFERENCE_FIELD[type]: target_key})
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 201
