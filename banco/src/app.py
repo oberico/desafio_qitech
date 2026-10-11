@@ -79,3 +79,4 @@ application.add_api_route("/internal/internal-accounts", account_resource.on_get
 application.add_api_route("/auth/me", auth_resource.on_get_me, methods=["GET"])
 application.add_api_route("/admin/clients", admin_resource.on_get_clients, methods=["GET"])
 application.add_api_route("/admin/companies", admin_resource.on_get_companies, methods=["GET"])
+application.add_api_route("/admin/accounts", admin_resource.on_get_accounts, methods=["GET"])

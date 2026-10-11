@@ -17,3 +17,8 @@ class AdminResource:
         controller = AdminController(get_context().session)
         page = controller.list_companies(dict(request.query_params))
         return JSONResponse(content=jsonable_encoder(page), status_code=http_status.HTTP_200_OK)
+
+    def on_get_accounts(self, request: Request) -> JSONResponse:
+        controller = AdminController(get_context().session)
+        page = controller.list_accounts(dict(request.query_params))
+        return JSONResponse(content=jsonable_encoder(page), status_code=http_status.HTTP_200_OK)
