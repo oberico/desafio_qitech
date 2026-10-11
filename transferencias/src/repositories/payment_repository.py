@@ -29,8 +29,12 @@ class PaymentRepository:
             .first()
         )
 
-    def get_by_key(self, payment_key: str) -> Payment:
-        return self.session.query(Payment).filter(Payment.payment_key == payment_key).first()
+    def get_by_key(self, payment_key: str, client_key: str) -> Payment:
+        return (
+            self.session.query(Payment)
+            .filter(Payment.payment_key == payment_key, Payment.client_key == client_key)
+            .first()
+        )
 
     def get_method(self, enumerator: str) -> PaymentMethod:
         return self.session.query(PaymentMethod).filter(PaymentMethod.enumerator == enumerator).first()
