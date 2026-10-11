@@ -32,6 +32,7 @@ class AccountController(BaseController):
         created = self.account_repository.get_status(AccountStatus.CREATED)
         account = Account(
             account_key=str(uuid4()),
+            code=Account.BUSINESS,
             company=company,
             class_id=self.account_repository.get_class(AccountClass.LIABILITY).id,
             status=created,

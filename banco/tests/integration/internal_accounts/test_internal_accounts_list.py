@@ -25,3 +25,8 @@ class TestInternalAccountsList:
     def test_internal_account_does_not_expose_internal_id(self, internal_accounts):
         _, response = internal_accounts.list_internal_accounts()
         assert all(set(account) == {"account_key", "code", "class", "normal_balance", "status"} for account in response)
+
+    def test_does_not_list_client_accounts(self, internal_accounts, active_account):
+        _, response = internal_accounts.list_internal_accounts()
+        assert active_account not in [account["account_key"] for account in response]
+        assert len(response) == 3
