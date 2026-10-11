@@ -1,3 +1,4 @@
 from repositories.client_repository import ClientRepository
 from repositories.company_repository import CompanyRepository
 from repositories.account_repository import AccountRepository
+from repositories.ledger_repository import LedgerRepository

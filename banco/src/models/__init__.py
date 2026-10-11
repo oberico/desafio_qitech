@@ -6,3 +6,8 @@ from models.account_status import AccountStatus
 from models.account import Account
 from models.account_status_event import AccountStatusEvent
 from models.company import Company
+from models.transaction_type import TransactionType
+from models.transaction_status import TransactionStatus
+from models.transaction import Transaction
+from models.entry import Entry
+from models.transaction_status_event import TransactionStatusEvent
