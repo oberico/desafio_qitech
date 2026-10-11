@@ -106,8 +106,8 @@ class BankUnavailable(QIException):
     def __init__(self) -> None:
         title = "Bank Unavailable"
         http_status = 503
-        description = "The bank service is unavailable; nothing was recorded."
-        translation = "O Banco está indisponível; nada foi gravado."
+        description = "The bank service is unavailable or did not answer in time; nothing was recorded in this service and the outcome at the bank may be unknown. Retry with the same Idempotency-Key."
+        translation = "O Banco está indisponível ou não respondeu a tempo; nada foi gravado neste serviço e o resultado no Banco pode ser desconhecido. Retente com a mesma Idempotency-Key."
         super().__init__(title, self.code, http_status, description, translation)
 
 

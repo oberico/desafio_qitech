@@ -64,7 +64,7 @@ Se no cenário B o cliente **não retentar**, sobra no Banco um receipt `settled
 
 O catálogo (`internal_docs/catalogo-de-erros.md`, linha do `RNV001017`) diz "Banco indisponível (nada foi gravado)", e `transferencias/src/errors/custom_errors.py` (`BankUnavailable`) diz "The bank service is unavailable; nothing was recorded." / "O Banco está indisponível; nada foi gravado."
 
-Isso é verdade **no Transferências** e impreciso no timeout: o Banco pode ter gravado o receipt (cenário B). Proposta de redação (não aplicada; catálogo e código ficam como estão até o grupo decidir):
+Isso é verdade **no Transferências** e impreciso no timeout: o Banco pode ter gravado o receipt (cenário B). Redação adotada (aplicada em 2026-10-11, com aprovação do usuário, no catálogo e em `custom_errors.py`):
 
 | Onde | Redação proposta |
 |---|---|
@@ -72,7 +72,7 @@ Isso é verdade **no Transferências** e impreciso no timeout: o Banco pode ter 
 | `description` (en) | The bank service is unavailable or did not answer in time; nothing was recorded in this service and the outcome at the bank may be unknown. Retry with the same Idempotency-Key. |
 | `translation` (pt) | O Banco está indisponível ou não respondeu a tempo; nada foi gravado neste serviço e o resultado no Banco pode ser desconhecido. Retente com a mesma Idempotency-Key. |
 
-O código `RNV001017` não muda (o catálogo diz que número é contrato estável); só o texto. Pela regra do CLAUDE.md, mudar texto de erro é decisão do grupo.
+O código `RNV001017` não muda (o catálogo diz que número é contrato estável); só o texto. Mudar texto de erro é decisão do grupo (CLAUDE.md); esta foi aprovada.
 
 ## 3. Limites conhecidos
 
