@@ -54,3 +54,14 @@ class MethodNotAllowed(QIException):
         description = "The HTTP method is not allowed for this route."
         translation = "O método HTTP não é permitido para esta rota."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class AdminForbidden(QIException):
+    code = "RNV001027"
+
+    def __init__(self) -> None:
+        title = "Forbidden"
+        http_status = 403
+        description = "This route is restricted to administrators."
+        translation = "Esta rota é restrita a administradores."
+        super().__init__(title, self.code, http_status, description, translation)
