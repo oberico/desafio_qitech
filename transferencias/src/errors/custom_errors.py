@@ -23,6 +23,17 @@ class NotFoundRoute(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class ServiceBusy(QIException):
+    code = "RNV000006"
+
+    def __init__(self) -> None:
+        title = "Service Busy"
+        http_status = 503
+        description = "The service is at capacity and could not take the request in time; retry shortly."
+        translation = "O serviço está no limite de capacidade e não conseguiu atender a requisição a tempo; tente novamente em instantes."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class MethodNotAllowed(QIException):
     code = "RNV000005"
 

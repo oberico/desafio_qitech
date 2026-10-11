@@ -54,6 +54,10 @@ services:
       BANK_API_URL: http://banco-api:8001
       INTERBANK_API_URL: http://external-mocks:8003
       INTERBANK_TIMEOUT_SECONDS: 5
+      BANK_TIMEOUT_SECONDS: ${BANK_TIMEOUT_SECONDS:-5}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+      DB_POOL_TIMEOUT_SECONDS: ${DB_POOL_TIMEOUT_SECONDS:-3}
     ports:
       - "${TRANSF_API_PORT:-8002}:8002"
     depends_on:
@@ -96,6 +100,9 @@ services:
       BANK_API_URL: http://banco-fault-proxy:8080
       INTERBANK_API_URL: http://external-mocks:8003
       INTERBANK_TIMEOUT_SECONDS: 5
+      DB_POOL_SIZE: 1
+      DB_MAX_OVERFLOW: 0
+      DB_POOL_TIMEOUT_SECONDS: 0.05
     ports:
       - "${TRANSF_FAULT_API_PORT:-8012}:8002"
     depends_on:

@@ -14,6 +14,7 @@
 | RNV000003 | 401 | Token ausente, inválido ou revogado |
 | RNV000004 | 404 | Rota inexistente |
 | RNV000005 | 405 | Método HTTP não permitido para a rota |
+| RNV000006 | 503 | Serviço ocupado: pool de conexões do banco esgotado dentro do prazo (tente novamente em instantes) |
 
 ## Integração entre serviços
 
