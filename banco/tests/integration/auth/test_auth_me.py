@@ -1,6 +1,7 @@
 import pytest
 
 from tests.utils.payload_generator import PayloadGenerator
+from tests.utils.random_generator import RandomGenerator
 
 
 class TestAuthMe:
@@ -75,3 +76,51 @@ class TestAuthMe:
         status, response = clients.get_auth_me(client_token, internal_token)
         assert status == 200
         assert response["companies"] == []
+
+    def test_company_with_active_account(self, clients, accounts, internal_token, client_token, create_company):
+        company_key = create_company(client_token)
+        status, account = accounts.post_account(company_key, client_token)
+        assert status == 201
+
+        status, response = clients.get_auth_me(client_token, internal_token)
+        assert status == 200
+        assert response["companies"] == [
+            {"company_key": company_key, "account_key": account["account_key"], "account_status": "active"}
+        ]
+
+    def test_company_with_rejected_account(self, clients, accounts, internal_token, client_token, create_company):
+        company_key = create_company(client_token, RandomGenerator.cnpj_rejected_by_bureau())
+        status, account = accounts.post_account(company_key, client_token)
+        assert status == 201
+
+        status, response = clients.get_auth_me(client_token, internal_token)
+        assert status == 200
+        assert response["companies"] == [
+            {"company_key": company_key, "account_key": account["account_key"], "account_status": "rejected"}
+        ]
+
+    def test_company_with_closed_account(self, clients, accounts, internal_token, client_token, create_company):
+        company_key = create_company(client_token)
+        status, account = accounts.post_account(company_key, client_token)
+        assert status == 201
+        status, _ = accounts.close(account["account_key"], client_token)
+        assert status == 200
+
+        status, response = clients.get_auth_me(client_token, internal_token)
+        assert status == 200
+        assert response["companies"][0]["account_status"] == "closed"
+
+    def test_lists_companies_with_and_without_account(
+        self, clients, accounts, internal_token, client_token, create_company
+    ):
+        with_account = create_company(client_token)
+        status, account = accounts.post_account(with_account, client_token)
+        assert status == 201
+        without_account = create_company(client_token)
+
+        status, response = clients.get_auth_me(client_token, internal_token)
+        assert status == 200
+        companies = {company["company_key"]: company for company in response["companies"]}
+        assert companies.keys() == {with_account, without_account}
+        assert companies[with_account]["account_key"] == account["account_key"]
+        assert companies[without_account]["account_key"] is None
