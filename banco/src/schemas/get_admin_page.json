@@ -1,5 +1,5 @@
 {
-  "title": "GetAdminClients",
+  "title": "GetAdminPage",
   "type": "object",
   "properties": {
     "limit": {

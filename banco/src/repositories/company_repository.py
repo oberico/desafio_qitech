@@ -8,6 +8,15 @@ class CompanyRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def get_by_key(self, company_key: str) -> Company:
+        return self.session.query(Company).filter(Company.company_key == company_key.lower()).first()
+
+    def list_newest_first(self, limit: int, before_id: int = None) -> list:
+        query = self.session.query(Company)
+        if before_id is not None:
+            query = query.filter(Company.id < before_id)
+        return query.order_by(Company.id.desc()).limit(limit).all()
+
     def get_by_key_and_client(self, company_key: str, client_id: int) -> Company:
         return (
             self.session.query(Company)

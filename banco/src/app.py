@@ -78,3 +78,4 @@ application.add_api_route("/internal/accounts/{account_key}/unblock", account_re
 application.add_api_route("/internal/internal-accounts", account_resource.on_get_internal, methods=["GET"])
 application.add_api_route("/auth/me", auth_resource.on_get_me, methods=["GET"])
 application.add_api_route("/admin/clients", admin_resource.on_get_clients, methods=["GET"])
+application.add_api_route("/admin/companies", admin_resource.on_get_companies, methods=["GET"])
