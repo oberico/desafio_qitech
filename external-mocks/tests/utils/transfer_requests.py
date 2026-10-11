@@ -8,7 +8,7 @@ class TransferRequests:
         self.api = api
 
     def post_transfer(self, payload: dict) -> tuple:
-        return self.api.post("/transfers", payload)
+        return self.api.post("/interbank/transfers", payload)
 
     @staticmethod
     def build_payload(scenario: str = None, payout_key: str = None, amount_minor: int = 10000) -> dict:

@@ -114,7 +114,7 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 - **`POST /internal/settlements`:** libera os `payment` em `held` com `release_at <= as_of`. A chave determinística (`settlement:<payment_key>`) e o `FOR UPDATE` na linha do `payment` continuam valendo; rodar de novo com o mesmo `as_of` é no-op.
 - **`POST /internal/payouts/reconcile`:** `as_of` é o "agora" que decide se a próxima tentativa/backoff do payout já venceu (`last_attempt_at` + espera) e o `now` gravado ao registrar a `payout_attempt`.
 
-O mock interbancário que o reconcile chama está em `mock-interbancario.md`.
+O mock interbancário que o reconcile chama (`POST /interbank/transfers` no `external-mocks`) está em `mocks-externos.md`.
 
 ### Admin
 

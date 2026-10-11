@@ -6,7 +6,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from errors import InvalidSchema, MethodNotAllowed, NotFoundRoute, QIException
 from errors.handlers import qi_exception_to_response
-from resources import HealthCheckResource, TransferResource
+from resources import HealthCheckResource, InterbankTransferResource
 from utils.logger import setup_logging
 
 setup_logging()
@@ -39,8 +39,8 @@ application.add_exception_handler(QIException, handle_qi_exception)
 application.add_exception_handler(RequestValidationError, handle_request_validation)
 
 health_check_resource = HealthCheckResource()
-transfer_resource = TransferResource()
+interbank_transfer_resource = InterbankTransferResource()
 
 application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
 application.add_api_route("/health_check", health_check_resource.on_get_health_check, methods=["GET"])
-application.add_api_route("/transfers", transfer_resource.on_post, methods=["POST"])
+application.add_api_route("/interbank/transfers", interbank_transfer_resource.on_post, methods=["POST"])

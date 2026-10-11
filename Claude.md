@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Instituição de pagamento com conta PJ e gateway de pagamento (agnóstico à forma). **Não oferecemos crédito** — só movimentamos dinheiro de terceiros, sem assumir risco de crédito nem exigir capital próprio. Desafio do Bootcamp QI Tech. Monorepo com **dois serviços**: `banco/` e `transferencias/`.
+Instituição de pagamento com conta PJ e gateway de pagamento (agnóstico à forma). **Não oferecemos crédito** — só movimentamos dinheiro de terceiros, sem assumir risco de crédito nem exigir capital próprio. Desafio do Bootcamp QI Tech. Monorepo com **dois serviços de negócio**: `banco/` e `transferencias/`; mais `external-mocks/`, container à parte que simula sistemas externos (interbancário hoje, birô depois) — sem banco, sem auth, estado em memória, chamado só pelos conectores dos serviços de negócio. Contrato em `internal_docs/mocks-externos.md`.
 
 Antes de codar, leia `internal_docs/rfc-rnv-v7.2.md` (a spec) e `internal_docs/analise-defesa-rfc.md` (o porquê de cada decisão) e `internal_docs/catalogo-de-erros.md` (o catálogo de erros). Em conflito, a RFC v7.2 vence e você me avisa. Em caso de dúvida me pergunte e me ajude a entender melhor as regras. Não faça suposições.
 
@@ -72,5 +72,5 @@ O contrato canônico de rotas vive em `internal_docs/rotas.md` — o que cada en
 ## Fronteira dos serviços
 
 - **Banco** é dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`entry`), auth. Expõe `POST /ledger/transactions` (lançamento idempotente) e `GET /auth/me` (só com `INTERNAL-TOKEN`).
-- **Transferências** é dono de: `payment`, `payout` (com `destination` jsonb dado na requisição, imutável), `payout_attempt`, o ciclo (janela `release_at`, tarifa por `payment_method`, estados). Chama o Banco por `connectors/bank_connector.py` e o mock por `connectors/interbank_connector.py`.
+- **Transferências** é dono de: `payment`, `payout` (com `destination` jsonb dado na requisição, imutável), `payout_attempt`, o ciclo (janela `release_at`, tarifa por `payment_method`, estados). Chama o Banco por `connectors/bank_connector.py` e o interbancário (mock em `external-mocks/`, `POST /interbank/transfers`) por `connectors/interbank_connector.py`, com `INTERBANK_API_URL` e `INTERBANK_TIMEOUT_SECONDS`. O birô é hoje o `MockBureauConnector` dentro do Banco; migra para o `external-mocks/` numa fatia própria.
 - Taxa e janela são **dado** (`payment_method`: `fee_bps` + janela por meio), snapshotados no `payment` na chegada; o settle usa o snapshot. O cálculo da tarifa e a escolha das contas é do **Transferências**; o Banco só valida que os lançamentos fecham e dedupe.

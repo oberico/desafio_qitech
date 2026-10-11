@@ -1,4 +1,4 @@
-name: CI Interbank Mock
+name: CI External Mocks
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-interbank-mock-${{ github.ref }}
+  group: ci-external-mocks-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,13 +25,13 @@ jobs:
           python-version: "3.11.16"
 
       - name: Install test dependencies
-        run: pip install -r interbank-mock/requirements-dev.txt
+        run: pip install -r external-mocks/requirements-dev.txt
 
       - name: Build and start containers
         id: build
-        run: docker compose up -d --build interbank-mock
+        run: docker compose up -d --build external-mocks
 
-      - name: Wait for the mock to be healthy
+      - name: Wait for the mocks to be healthy
         id: health
         run: |
           url=http://localhost:8003/health_check
@@ -45,12 +45,12 @@ jobs:
           echo "not healthy after 60s: $url"
           exit 1
 
-      - name: Run pytest (interbank-mock)
+      - name: Run pytest (external-mocks)
         id: pytest
         run: |
           mkdir -p reports
-          cd interbank-mock
-          timeout 300 python -m pytest tests/ --junitxml=../reports/interbank-mock.xml
+          cd external-mocks
+          timeout 300 python -m pytest tests/ --junitxml=../reports/external-mocks.xml
 
       - name: Show container logs on failure
         if: failure()
@@ -66,7 +66,7 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           JOB_STATUS: ${{ job.status }}
           STEPS_JSON: ${{ toJSON(steps) }}
-          SERVICE_TITLE: "Interbank Mock CI"
+          SERVICE_TITLE: "External Mocks CI"
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha || github.sha }}
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}

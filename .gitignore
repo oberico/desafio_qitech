@@ -12,7 +12,8 @@ credentials
 internal_docs/*
 !internal_docs/rotas.md
 !internal_docs/catalogo-de-erros.md
-!internal_docs/mock-interbancario.md
+!internal_docs/mocks-externos.md
+!internal_docs/limites-e-evolucao.md
 # --- Dados -------------------------------------------------
 *.csv
 *.xlsx

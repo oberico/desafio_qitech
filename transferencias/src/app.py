@@ -2,9 +2,10 @@ from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import TimeoutError as ConnectionPoolTimeout
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from errors import InvalidSchema, MethodNotAllowed, NotFoundRoute, QIException
+from errors import InvalidSchema, MethodNotAllowed, NotFoundRoute, QIException, ServiceBusy
 from errors.handlers import qi_exception_to_response
 from middlewares import (
     register_client_auth_middleware,
@@ -31,6 +32,10 @@ def handle_request_validation(request: Request, exception: RequestValidationErro
     return qi_exception_to_response(InvalidSchema(f"{location}: {error['msg']}"))
 
 
+def handle_pool_timeout(request: Request, exception: ConnectionPoolTimeout) -> JSONResponse:
+    return qi_exception_to_response(ServiceBusy())
+
+
 ROUTING_ERRORS = {404: NotFoundRoute, 405: MethodNotAllowed}
 
 
@@ -44,6 +49,7 @@ async def handle_http_exception(request: Request, exception: StarletteHTTPExcept
 application.add_exception_handler(StarletteHTTPException, handle_http_exception)
 application.add_exception_handler(QIException, handle_qi_exception)
 application.add_exception_handler(RequestValidationError, handle_request_validation)
+application.add_exception_handler(ConnectionPoolTimeout, handle_pool_timeout)
 
 register_client_auth_middleware(application)
 register_session_manager_middleware(application)

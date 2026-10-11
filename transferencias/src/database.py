@@ -4,9 +4,16 @@ from typing import Optional
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from constants import DATABASE_URL
+from constants import DATABASE_URL, DB_MAX_OVERFLOW, DB_POOL_SIZE, DB_POOL_TIMEOUT_SECONDS
 
-engine = create_engine(DATABASE_URL, pool_size=5, pool_recycle=600, pool_pre_ping=True)
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=DB_POOL_SIZE,
+    max_overflow=DB_MAX_OVERFLOW,
+    pool_timeout=DB_POOL_TIMEOUT_SECONDS,
+    pool_recycle=600,
+    pool_pre_ping=True,
+)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False)
 

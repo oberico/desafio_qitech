@@ -14,12 +14,13 @@
 | RNV000003 | 401 | Token ausente, inválido ou revogado |
 | RNV000004 | 404 | Rota inexistente |
 | RNV000005 | 405 | Método HTTP não permitido para a rota |
+| RNV000006 | 503 | Serviço ocupado: pool de conexões do banco esgotado dentro do prazo (tente novamente em instantes) |
 
 ## Integração entre serviços
 
 | Código | HTTP | Mensagem |
 |---|---|---|
-| RNV001017 | 503 | Banco indisponível (nada foi gravado); levantado pelo Transferências |
+| RNV001017 | 503 | Banco indisponível ou sem resposta; nada foi gravado no Transferências, e o resultado no Banco pode ser desconhecido. Retente com a mesma `Idempotency-Key`; levantado pelo Transferências |
 
 ## Cadastro (cliente / empresa)
 

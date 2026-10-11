@@ -145,3 +145,9 @@ def credit_account(ledger):
 
     return _credit
 
+
+@pytest.fixture
+def blocked_account(accounts, active_account, internal_token) -> str:
+    status, response = accounts.block(active_account, internal_token)
+    assert status == 200, f"não deu para bloquear a conta do cenário: {status} {response}"
+    return active_account
