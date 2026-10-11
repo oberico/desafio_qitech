@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from models import Account, AccountClass, AccountStatus, AccountStatusEvent, Company
@@ -35,9 +36,19 @@ class AccountRepository:
     def get_status(self, enumerator: str) -> AccountStatus:
         return self.session.query(AccountStatus).filter(AccountStatus.enumerator == enumerator).first()
 
-    def create(self, account: Account) -> None:
-        self.session.add(account)
-        self.session.flush()
+    def try_create(self, account: Account) -> str:
+        try:
+            self.session.add(account)
+            self.session.flush()
+        except IntegrityError as error:
+            self.session.rollback()
+            return self._violated_constraint(error) or "unknown"
+        return None
+
+    @staticmethod
+    def _violated_constraint(error: IntegrityError) -> str:
+        diag = getattr(error.orig, "diag", None)
+        return getattr(diag, "constraint_name", None)
 
     def change_status(self, account: Account, status: AccountStatus, reason: str = None) -> None:
         account.status = status

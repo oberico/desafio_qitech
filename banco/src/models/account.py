@@ -22,6 +22,7 @@ class Account(Base):
     __table_args__ = (
         UniqueConstraint("account_key"),
         UniqueConstraint("code"),
+        UniqueConstraint("company_id", name="account_company_id_key"),
     )
 
     status = relationship("AccountStatus", foreign_keys=[status_id], lazy="selectin")

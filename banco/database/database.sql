@@ -110,6 +110,7 @@ CREATE TABLE account(
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
     UNIQUE(account_key),
     UNIQUE(code),
+    CONSTRAINT account_company_id_key UNIQUE(company_id),
     CONSTRAINT ck_account_internal_or_client CHECK (
         (company_id IS NULL AND code IS NOT NULL)
         OR (company_id IS NOT NULL AND code IS NULL)
