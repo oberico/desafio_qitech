@@ -1,0 +1,57 @@
+import pytest
+
+from tests.utils.random_generator import RandomGenerator
+
+
+class TestAccountClose:
+    @pytest.mark.parametrize("token", [None, "token-que-nao-existe"], ids=["missing_token", "unknown_token"])
+    def test_refuses_missing_or_unknown_token(self, accounts, active_account, token):
+        status, response = accounts.close(active_account, token)
+        assert status == 401
+        assert response["code"] == "RNV000003"
+
+    def test_closes_account_with_zero_balance(self, accounts, active_account, client_token):
+        status, response = accounts.close(active_account, client_token)
+        assert status == 200
+        assert response["account_key"] == active_account
+        assert response["status"] == "closed"
+
+    def test_closed_status_is_persisted(self, accounts, active_account, client_token):
+        status, _ = accounts.close(active_account, client_token)
+        assert status == 200
+
+        status, response = accounts.get_account(active_account, client_token)
+        assert status == 200
+        assert response["status"] == "closed"
+
+    def test_company_shows_its_closed_account(self, accounts, companies, create_company, client_token):
+        company_key = create_company(client_token)
+        status, created = accounts.post_account(company_key, client_token)
+        assert status == 201
+        status, _ = accounts.close(created["account_key"], client_token)
+        assert status == 200
+
+        status, response = companies.get_company(company_key, client_token)
+        assert status == 200
+        assert response["account_status"] == "closed"
+
+    def test_account_of_another_client_looks_nonexistent(self, accounts, active_account, other_client_token):
+        status, response = accounts.close(active_account, other_client_token)
+        assert status == 404
+        assert response["code"] == "RNV001021"
+
+    def test_refused_close_by_another_client_keeps_account_active(
+        self, accounts, active_account, client_token, other_client_token
+    ):
+        status, _ = accounts.close(active_account, other_client_token)
+        assert status == 404
+
+        status, response = accounts.get_account(active_account, client_token)
+        assert status == 200
+        assert response["status"] == "active"
+
+    @pytest.mark.parametrize("account_key", [RandomGenerator.uuid(), "x" * 36], ids=["nonexistent", "malformed"])
+    def test_refuses_unknown_account(self, accounts, client_token, account_key):
+        status, response = accounts.close(account_key, client_token)
+        assert status == 404
+        assert response["code"] == "RNV001021"
