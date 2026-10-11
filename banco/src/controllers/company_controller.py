@@ -1,8 +1,6 @@
 import os
 from uuid import uuid4
 
-from sqlalchemy.exc import IntegrityError
-
 from constants import SCHEMAS_DIR
 from controllers.base_controller import BaseController
 from dtos import CompanyDTO
@@ -13,7 +11,7 @@ from utils.cnpj import is_valid_cnpj
 from utils.schema_handler import validate_json
 
 POST_COMPANIES_SCHEMA = os.path.join(SCHEMAS_DIR, "post_companies.json")
-CNPJ_CONSTRAINT = "company_cnpj_key"
+CONSTRAINT_ERRORS = {"company_cnpj_key": CnpjAlreadyRegistered}
 
 
 class CompanyController(BaseController):
@@ -36,13 +34,9 @@ class CompanyController(BaseController):
             client_id=client_id,
         )
 
-        try:
-            self.company_repository.create(company)
-        except IntegrityError as error:
-            self.session.rollback()
-            if self.company_repository.violated_constraint(error) == CNPJ_CONSTRAINT:
-                raise CnpjAlreadyRegistered() from error
-            raise
+        violated_constraint = self.company_repository.try_create(company)
+        if violated_constraint is not None:
+            raise CONSTRAINT_ERRORS[violated_constraint]()
 
         company_dto = CompanyDTO.obj_to_dict(company)
         self.session.commit()

@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -11,7 +12,7 @@ ERROR_FIELDS = {"title", "description", "translation", "code"}
 
 
 def birthdate_for_age(age_in_years: int, days_offset: int = 0) -> str:
-    today = date.today()
+    today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
     try:
         birthday = today.replace(year=today.year - age_in_years)
     except ValueError:
@@ -50,6 +51,7 @@ class TestClientCreate:
             ("cpf", "52998224725"),
             ("name", None),
             ("name", ""),
+            ("name", "   "),
             ("name", "a" * 256),
             ("birthdate", "17/05/1990"),
             ("email", "fulana"),
@@ -61,6 +63,7 @@ class TestClientCreate:
             "cpf_without_punctuation",
             "name_null",
             "name_empty",
+            "name_only_spaces",
             "name_256_characters",
             "birthdate_in_brazilian_format",
             "email_without_at",
@@ -152,6 +155,11 @@ class TestClientCreate:
         status, response = clients.post_client(payload)
         assert status == 400
         assert response["code"] == "RNV000001"
+
+    def test_future_birthdate_description_says_it_cannot_be_in_the_future(self, clients):
+        payload = PayloadGenerator.create_client_payload(birthdate="2999-01-01")
+        _, response = clients.post_client(payload)
+        assert response["description"].endswith("birthdate: 2999-01-01 cannot be in the future")
 
     def test_refused_request_does_not_take_the_cpf(self, clients):
         payload = PayloadGenerator.create_client_payload(birthdate=birthdate_for_age(17))
