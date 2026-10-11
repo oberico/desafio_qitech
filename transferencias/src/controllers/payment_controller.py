@@ -3,10 +3,12 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from constants import SCHEMAS_DIR
+from connectors import BankConnector
 from controllers.base_controller import BaseController
 from dtos import PaymentDTO
 from errors import (
     AccountNotActive,
+    BankUnavailable,
     CompanyWithoutAccount,
     IdempotencyKeyReused,
     InvalidAmount,
@@ -26,6 +28,7 @@ class PaymentController(BaseController):
     def __init__(self, session) -> None:
         super().__init__(session)
         self.payment_repository = PaymentRepository(session)
+        self.bank_connector = BankConnector()
 
     def create(self, payload: dict, idempotency_key: str, client_key: str, companies: list) -> tuple:
         validate_json(payload, POST_PAYMENT_SCHEMA)
@@ -51,6 +54,7 @@ class PaymentController(BaseController):
             payload_hash=payload_hash(self._meaningful_fields(payload)),
         )
         if self.payment_repository.try_create(payment):
+            payment.transaction_key = self._post_receipt(payment)
             payment_dto = PaymentDTO.obj_to_dict(payment)
             self.session.commit()
             return payment_dto, True
@@ -69,6 +73,23 @@ class PaymentController(BaseController):
             raise NotFoundPayment(payment_key)
 
         return PaymentDTO.obj_to_dict(payment)
+
+    def _post_receipt(self, payment: Payment) -> str:
+        receipt = {
+            "type": "receipt",
+            "entries": [
+                {"account_code": "reserves", "debit_minor": payment.amount_minor},
+                {"account_code": "in_transit", "credit_minor": payment.amount_minor},
+            ],
+        }
+        try:
+            transaction = self.bank_connector.post_ledger_transaction(
+                receipt, f"receipt:{payment.company_key}:{payment.idempotency_key}"
+            )
+        except BankUnavailable:
+            self.session.rollback()
+            raise
+        return transaction["transaction_key"]
 
     @staticmethod
     def _authorized_account_key(company_key: str, companies: list) -> str:

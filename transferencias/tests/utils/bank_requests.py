@@ -26,6 +26,10 @@ class BankRequests:
         status, response = self.api.post(f"/accounts/{account_key}/close", headers=self._auth(token))
         assert status == 200, f"não deu para encerrar a conta no Banco: {status} {response}"
 
+    def post_ledger_transaction(self, payload: dict, idempotency_key: str, internal_token: str) -> tuple:
+        headers = {"INTERNAL-TOKEN": internal_token, "Idempotency-Key": idempotency_key}
+        return self.api.post("/ledger/transactions", payload, headers)
+
     @staticmethod
     def _auth(token: str) -> dict:
         return {"Authorization": f"Bearer {token}"}

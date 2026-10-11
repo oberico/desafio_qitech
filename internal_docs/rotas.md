@@ -102,6 +102,20 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 | 1 | POST | `/internal/settlements` | serviço | Job de liberação: in_transit → cliente ao fim da janela. |
 | 2 | POST | `/internal/payouts/reconcile` | serviço | Job de reconciliação do payout (confirma/falha; reversal ao falhar). |
 
+**`as_of` nos jobs.** Os dois endpoints aceitam corpo opcional para injetar o "agora", de modo que testes e operação não precisem esperar a janela (24h/72h/720h) nem o backoff:
+
+```json
+{"as_of": "2026-10-12T12:00:00-03:00"}
+```
+
+- **Ausente** (corpo vazio ou sem a chave) = relógio do servidor.
+- **Formato:** ISO 8601 **com fuso** (offset ou `Z`). Sem fuso ou não-ISO → `400 RNV000001` (JSON Schema na porta, antes de qualquer consulta).
+- **Acesso:** só existe em `/internal/*` (`INTERNAL-TOKEN`; sem ele, `403 RNV000002`). **Nunca** é aceito em rota de cliente: serve a testes e operação, não ao produto.
+- **`POST /internal/settlements`:** libera os `payment` em `held` com `release_at <= as_of`. A chave determinística (`settlement:<payment_key>`) e o `FOR UPDATE` na linha do `payment` continuam valendo; rodar de novo com o mesmo `as_of` é no-op.
+- **`POST /internal/payouts/reconcile`:** `as_of` é o "agora" que decide se a próxima tentativa/backoff do payout já venceu (`last_attempt_at` + espera) e o `now` gravado ao registrar a `payout_attempt`.
+
+O mock interbancário que o reconcile chama está em `mock-interbancario.md`.
+
 ### Admin
 
 | Prioridade | Método | Rota | Acesso |
@@ -117,3 +131,6 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 - `GET /payouts/{payout_key}` para o lojista acompanhar o saque.
 - Novos códigos: `RNV001030` (empresa sem conta aberta), `RNV001031` (conta não active, só escrita),
   `RNV001032` (saque inexistente ou de outro lojista).
+- `as_of` opcional no corpo de `POST /internal/settlements` e `POST /internal/payouts/reconcile`: refino
+  em cima da RFC v7.2, que não menciona `as_of` (ela fala só em "o relógio" e "quando `release_at` vence").
+  Sem o campo, nada muda; existe para testar sem esperar a janela. Só com `INTERNAL-TOKEN`.

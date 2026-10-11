@@ -21,7 +21,7 @@ class TestPaymentCreate:
         assert response["amount_minor"] == 10000
         assert isinstance(response["amount_minor"], int)
         assert response["method"] == "pix"
-        assert response["transaction_key"] is None
+        assert response["transaction_key"] is not None
 
     @pytest.mark.parametrize("method, fee_bps, window_hours", METHOD_SNAPSHOTS.values(), ids=METHOD_SNAPSHOTS.keys())
     def test_snapshots_the_method_fee_and_window(self, payments, payment_payload, method, fee_bps, window_hours):

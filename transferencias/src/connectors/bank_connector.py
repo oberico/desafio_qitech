@@ -20,3 +20,19 @@ class BankConnector:
         if response.status_code != 200:
             raise BankUnavailable()
         return response.json()
+
+    def post_ledger_transaction(self, payload: dict, idempotency_key: str) -> dict:
+        try:
+            response = requests.post(
+                f"{BANK_API_URL}/ledger/transactions",
+                json=payload,
+                headers={"INTERNAL-TOKEN": INTERNAL_TOKEN, "Idempotency-Key": idempotency_key},
+                timeout=BANK_TIMEOUT_SECONDS,
+            )
+            transaction = response.json()
+        except (requests.exceptions.RequestException, ValueError) as error:
+            raise BankUnavailable() from error
+
+        if response.status_code not in (200, 201) or not transaction.get("transaction_key"):
+            raise BankUnavailable()
+        return transaction
