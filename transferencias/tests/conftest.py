@@ -53,3 +53,8 @@ def client_token(bank) -> str:
 @pytest.fixture(scope="session")
 def payments(api, client_token) -> PaymentRequests:
     return PaymentRequests(api, client_token)
+
+
+@pytest.fixture(scope="session")
+def other_payments(api, bank) -> PaymentRequests:
+    return PaymentRequests(api, bank.create_client_token())

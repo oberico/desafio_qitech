@@ -7,7 +7,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from errors import InvalidSchema, MethodNotAllowed, NotFoundRoute, QIException
 from errors.handlers import qi_exception_to_response
 from middlewares import (
-    # register_client_auth_middleware,
+    register_client_auth_middleware,
     register_internal_token_middleware,
     register_request_context_middleware,
     register_request_logger_middleware,
@@ -45,7 +45,7 @@ application.add_exception_handler(StarletteHTTPException, handle_http_exception)
 application.add_exception_handler(QIException, handle_qi_exception)
 application.add_exception_handler(RequestValidationError, handle_request_validation)
 
-# register_client_auth_middleware(application)
+register_client_auth_middleware(application)
 register_session_manager_middleware(application)
 register_internal_token_middleware(application)
 register_request_logger_middleware(application)
