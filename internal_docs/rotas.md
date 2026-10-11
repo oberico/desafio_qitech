@@ -108,6 +108,24 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 |---|---|---|---|---|
 | 1 | POST | `/internal/settlements` | serviço | Job de liberação: in_transit → cliente ao fim da janela. |
 | 2 | POST | `/internal/payouts/reconcile` | serviço | Job de reconciliação do payout (confirma/falha; reversal ao falhar). |
+| 2 | PUT | `/internal/payment-methods/{method}` | serviço | Define taxa e janela de um meio de pagamento, versionando (append-only). |
+
+**`PUT /internal/payment-methods/{method}` — contrato completo.**
+
+- **Acesso:** só `INTERNAL-TOKEN`; sem ele, `403 RNV000002`.
+- **`{method}`:** `pix`, `boleto` ou `card`. Fora do enum → `400 RNV000001`.
+- **Corpo** (JSON Schema na porta, ambos obrigatórios, sem campo extra): `{"fee_bps": <int 0..10000>, "release_window_hours": <int 0..8760>}`. Tipo errado, campo ausente, campo extra ou valor fora da faixa → `400 RNV000001`.
+- **Resposta:** `{"method", "version", "fee_bps", "release_window_hours", "created_at"}`.
+  - `201`: os valores diferem da versão atual e uma **nova versão** foi gravada.
+  - `200`: os valores são **iguais** aos da versão atual; nada é gravado e a resposta é a versão atual (idempotente).
+
+Versionamento:
+
+- **Append-only:** nunca há `UPDATE` em `payment_method`. Cada mudança grava uma nova linha com `version` incrementada; a versão **atual** é a de maior `version`.
+- **Concorrência:** escritas simultâneas no mesmo método são serializadas por lock na linha da versão atual, então a comparação "igual à atual?" e o incremento de `version` não correm em paralelo.
+- **Snapshot no `payment`:** o `payment` guarda a versão usada (FK para a linha de `payment_method`) e **copia** `fee_bps` e `release_at`. Mudar o método **nunca** altera payments já criados nem o que é cobrado deles: cobra-se a taxa informada ao cliente na venda. O settle continua usando só o snapshot.
+- **Teto de `release_window_hours` (8760 h, 1 ano):** decisão de projeto. Protege contra overflow de data no cálculo de `release_at` e fica muito acima da maior janela atual (720 h).
+- **`fee_bps <= 10000`:** também é `CHECK` na tabela. Sem ele, `fee_bps` acima de 10000 faria o cálculo da tarifa (`split_fee`) levantar `ValueError`, o que daria `500` e abortaria o run inteiro do job de settlement.
 
 **`as_of` nos jobs.** Os dois endpoints aceitam corpo opcional para injetar o "agora", de modo que testes e operação não precisem esperar a janela (24h/72h/720h) nem o backoff:
 
@@ -168,3 +186,5 @@ O mock interbancário que o reconcile chama (`POST /interbank/transfers` no `ext
 - `as_of` opcional no corpo de `POST /internal/settlements` e `POST /internal/payouts/reconcile`: refino
   em cima da RFC v7.2, que não menciona `as_of` (ela fala só em "o relógio" e "quando `release_at` vence").
   Sem o campo, nada muda; existe para testar sem esperar a janela. Só com `INTERNAL-TOKEN`.
+  Em operação, o prazo definido nas tabelas (`release_window_hours` do `payment_method`) é o que prevalece.
+- `PUT /internal/payment-methods/{method}`: versiona taxa e janela (append-only); a RFC v7.2 trata `payment_method` como tabela com snapshot no `payment`, mas não cita a rota nem o versionamento.

@@ -50,7 +50,7 @@ Totais executados (incluem casos parametrizados): Banco 195, Transferências 108
 | Dois débitos simultâneos (um passa, um `422`, saldo nunca negativo) | ✅ coberto | | feito |
 | 10x a mesma Idempotency-Key (uma operação) | ✅ coberto | | feito |
 | N créditos simultâneos (todos entram, saldo = soma) | ⏳ pendente | Depende do `GET /accounts/{key}/balance` (item B1 pendente) | futuro |
-| Taxa snapshotada (muda a taxa entre chegada e liberação, cobra a antiga) | ❌ lacuna | Exige rota admin de `payment_method` para alterar a taxa por HTTP; ou aceitar a lacuna na defesa | decisão pendente |
+| Taxa snapshotada (muda a taxa entre chegada e liberação, cobra a antiga) | ✅ coberto | Via `PUT /internal/payment-methods/{method}`; testes em `transferencias/tests/integration/payment_method/` (branch `feature/payment-method-versioning`); `test_payment_method_snapshot.py::test_settlement_charges_the_old_fee_after_the_fee_changed` e `test_changing_the_window_does_not_move_an_existing_release_at` | feito |
 | Estorno cheio na janela, recusado depois de `settled` | ⏳ pendente | Slice T3 (refund) | futuro |
 | 3 timeouts de payout viram `failed` + reversal devolve o dinheiro | ⏳ pendente | Slice T6 (reconcile do payout) | futuro |
 
@@ -86,7 +86,16 @@ Totais executados (incluem casos parametrizados): Banco 195, Transferências 108
 | `entries` de `2` a `20` itens (transação real tem no máximo 4) | Banco `POST /ledger/transactions` | `400 RNV000001` |
 | `amount_minor` acima de `9223372036854775807` | Transferências `POST /payments` | `422 RNV001023` (código existente, que já cobria `<= 0`) |
 
+| `PUT /internal/payment-methods/{method}` versiona (append-only) em vez de `UPDATE`; valores iguais à versão atual não criam versão (`200`), mudança cria (`201`) | Transferências `PUT /internal/payment-methods/{method}` | `400 RNV000001` (JSON Schema), `403 RNV000002` |
+
 Documentadas em `rotas.md` e `catalogo-de-erros.md`. Nenhum código novo foi criado.
+
+**Por que versionar e não dar `UPDATE` no `payment_method`:**
+
+- O preço informado ao cliente na venda prevalece: mudar a tabela nunca altera o que foi cobrado de payments já criados.
+- Histórico não se apaga (append-only, mesma regra do resto do sistema); `UPDATE` destruiria a prova de qual taxa valia em cada data.
+- Rastreabilidade: o `payment` guarda FK para a versão usada e copia `fee_bps` e `release_at` (snapshot), então dá para provar a origem de cada cobrança.
+- Limites de projeto: `release_window_hours <= 8760` (1 ano; evita overflow de data, muito acima dos 720 h atuais) e `fee_bps <= 10000` (`CHECK` e JSON Schema).
 
 ## 6. Documentos a atualizar no futuro
 
@@ -97,7 +106,7 @@ Documentadas em `rotas.md` e `catalogo-de-erros.md`. Nenhum código novo foi cri
 | `insomnia-banco.json` | Defasado: sem conta, ledger, bloqueio | Chaz | futuro |
 | `insomnia-banco-ledger.json` | Sem block/unblock e sem limites de valor | Chaz | futuro |
 | `insomnia-transferencias.json` | Refund (T3), payouts (T4-T6) | Chaz, slices T3-T6 | futuro |
-| `rfc-rnv-v7.2.md` | Não menciona `as_of`, `external-mocks` nem os limites de BIGINT. Em conflito a RFC vence: levar ao time decidir se a RFC muda | Time (decisão) | futuro |
+| `rfc-rnv-v7.2.md` | Vai **absorver** `as_of` (existe só para fins de teste; em operação prevalece o prazo das tabelas, `release_window_hours` do `payment_method`) e o `external-mocks` (faz parte do negócio, ainda não está na RFC). Também precisa citar o versionamento de `payment_method` e a rota `PUT /internal/payment-methods/{method}`. Os limites de BIGINT seguem sem menção | Usuário/grupo | decidido, falta escrever |
 | `analise-defesa-rfc.md` | Acrescentar os limites conhecidos | Hann | futuro |
 | `rotas.md` | `GET balance`/`statement` quando existirem; corpo do job de reconcile | Hann, após B1 e T6 | futuro |
 | `catalogo-de-erros.md` | Novos códigos de payout (criar só com aprovação do usuário) | Hann, slices T4-T6 | futuro |
@@ -110,5 +119,8 @@ Documentadas em `rotas.md` e `catalogo-de-erros.md`. Nenhum código novo foi cri
 | Reconciliação Transferências × Banco | `receipt` órfão: lançamento no Banco sem `payment` correspondente se a escrita local falhar depois | futuro |
 | `D X + C X` na mesma conta com saldo zero | Comportamento não definido e não testado | futuro |
 | Job de settlement global | Duração cresce com o tamanho da base; ver `limites-e-evolucao.md` | futuro |
+| `fee_bps` > 10000 faz o job de settlement dar 500 (`split_fee` levanta `ValueError` para `fee_bps` acima de 10000) | Risco latente resolvido pelo `CHECK` de `fee_bps <= 10000` e pela validação da rota `PUT /internal/payment-methods/{method}` | fechado |
 
 > Depois dos testes novos desta branch: Banco 270 e Transferências 111 casos executados (mais 6 `fault`), external-mocks 36. Débitos duplicados na mesma conta somam: `test_refuses_duplicate_debits_exceeding_balance` e `test_accepts_duplicate_debits_within_balance`.
+
+> Taxa versionada: Transferências 151 casos executados (mais 6 `fault`) e Banco 270.
