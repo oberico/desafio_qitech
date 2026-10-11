@@ -16,17 +16,12 @@
     "company_key": {
       "type": "string",
       "pattern": "^[0-9a-fA-F-]{36}$"
-    },
-    "account_key": {
-      "type": "string",
-      "pattern": "^[0-9a-fA-F-]{36}$"
     }
   },
   "required": [
     "amount_minor",
     "method",
-    "company_key",
-    "account_key"
+    "company_key"
   ],
   "additionalProperties": false
 }

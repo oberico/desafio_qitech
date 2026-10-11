@@ -1,13 +1,11 @@
 from uuid import uuid4
 
-from tests.utils.payload_generator import PayloadGenerator
-
 ERROR_FIELDS = {"title", "description", "translation", "code"}
 
 
 class TestPaymentGet:
-    def test_gets_created_payment_by_key(self, payments):
-        payload = PayloadGenerator.create_payment_payload()
+    def test_gets_created_payment_by_key(self, payments, payment_payload):
+        payload = payment_payload()
         _, created = payments.post_payment(payload, str(uuid4()))
 
         status, response = payments.get_payment(created["payment_key"])
@@ -22,8 +20,8 @@ class TestPaymentGet:
         assert response["code"] == "RNV001025"
         assert set(response) == ERROR_FIELDS
 
-    def test_payment_of_another_client_is_not_found(self, payments, other_payments):
-        payload = PayloadGenerator.create_payment_payload()
+    def test_payment_of_another_client_is_not_found(self, payments, payment_payload, other_payments):
+        payload = payment_payload()
         _, created = payments.post_payment(payload, str(uuid4()))
 
         status, response = other_payments.get_payment(created["payment_key"])

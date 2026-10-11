@@ -2,7 +2,6 @@ import os
 
 import pytest
 
-from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.random_generator import RandomGenerator
 
 INTERNAL_TOKEN = os.getenv("INTERNAL_TOKEN", "internal-token-dev")
@@ -41,6 +40,6 @@ class TestInternalToken:
         status = api.request_with_headers(method, path)[0]
         assert status == expected_status
 
-    def test_payments_route_does_not_require_internal_token(self, payments):
-        status, _ = payments.post_payment(PayloadGenerator.create_payment_payload(), RandomGenerator.uuid())
+    def test_payments_route_does_not_require_internal_token(self, payments, payment_payload):
+        status, _ = payments.post_payment(payment_payload(), RandomGenerator.uuid())
         assert status == 201

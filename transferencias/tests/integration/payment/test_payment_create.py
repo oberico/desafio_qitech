@@ -3,8 +3,6 @@ from uuid import uuid4
 
 import pytest
 
-from tests.utils.payload_generator import PayloadGenerator
-
 METHOD_SNAPSHOTS = {
     "pix": ("pix", 99, 24),
     "boleto": ("boleto", 199, 72),
@@ -13,8 +11,8 @@ METHOD_SNAPSHOTS = {
 
 
 class TestPaymentCreate:
-    def test_creates_payment_held(self, payments):
-        payload = PayloadGenerator.create_payment_payload(amount_minor=10000, method="pix")
+    def test_creates_payment_held(self, payments, payment_payload):
+        payload = payment_payload(amount_minor=10000, method="pix")
 
         status, response = payments.post_payment(payload, str(uuid4()))
 
@@ -26,8 +24,8 @@ class TestPaymentCreate:
         assert response["transaction_key"] is None
 
     @pytest.mark.parametrize("method, fee_bps, window_hours", METHOD_SNAPSHOTS.values(), ids=METHOD_SNAPSHOTS.keys())
-    def test_snapshots_the_method_fee_and_window(self, payments, method, fee_bps, window_hours):
-        payload = PayloadGenerator.create_payment_payload(method=method)
+    def test_snapshots_the_method_fee_and_window(self, payments, payment_payload, method, fee_bps, window_hours):
+        payload = payment_payload(method=method)
         before = datetime.now(timezone.utc)
 
         status, response = payments.post_payment(payload, str(uuid4()))
@@ -37,8 +35,8 @@ class TestPaymentCreate:
         release_at = datetime.fromisoformat(response["release_at"])
         assert before + timedelta(hours=window_hours - 1, minutes=59) <= release_at <= before + timedelta(hours=window_hours, minutes=1)
 
-    def test_amount_above_float_precision_is_stored_exactly(self, payments):
-        payload = PayloadGenerator.create_payment_payload(amount_minor=9_007_199_254_740_993)
+    def test_amount_above_float_precision_is_stored_exactly(self, payments, payment_payload):
+        payload = payment_payload(amount_minor=9_007_199_254_740_993)
         status, response = payments.post_payment(payload, str(uuid4()))
         assert status == 201
         assert response["amount_minor"] == 9_007_199_254_740_993
