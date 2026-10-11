@@ -1,10 +1,38 @@
 {
-    "tittle": "PostLedgerTransaction",
-    "type": "object",
-    "properties": {
-        "type": {"type": "string"},
-        "idempotency_key": {"type": "string"},
-        "entries": {"type": "array"}
+  "title": "PostLedgerTransaction",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["receipt", "payout", "settlement", "refund", "reversal"]
     },
-    "required":["type", "idempotency_key", "entries"]
+    "settles_transaction_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F-]{36}$"
+    },
+    "reverses_transaction_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F-]{36}$"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "properties": {
+          "account_code": {"type": "string", "minLength": 1},
+          "account_key": {"type": "string", "pattern": "^[0-9a-fA-F-]{36}$"},
+          "debit_minor": {"type": "integer", "minimum": 1},
+          "credit_minor": {"type": "integer", "minimum": 1}
+        },
+        "allOf": [
+          {"oneOf": [{"required": ["account_code"]}, {"required": ["account_key"]}]},
+          {"oneOf": [{"required": ["debit_minor"]}, {"required": ["credit_minor"]}]}
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["type", "entries"],
+  "additionalProperties": false
 }
