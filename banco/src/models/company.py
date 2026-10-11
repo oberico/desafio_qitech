@@ -20,4 +20,4 @@ class Company(Base):
         UniqueConstraint("cnpj", name="company_cnpj_key"),
     )
 
-    account = relationship("Account", uselist=False, lazy="selectin")
+    account = relationship("Account", uselist=False, back_populates="company", lazy="selectin")
