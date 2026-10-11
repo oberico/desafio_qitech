@@ -19,7 +19,7 @@ class PaymentController(BaseController):
         super().__init__(session)
         self.payment_repository = PaymentRepository(session)
 
-    def create(self, payload: dict, idempotency_key: str) -> tuple:
+    def create(self, payload: dict, idempotency_key: str, client_key: str) -> tuple:
         validate_json(payload, POST_PAYMENT_SCHEMA)
 
         if payload["amount_minor"] <= 0:
@@ -30,6 +30,7 @@ class PaymentController(BaseController):
 
         payment = Payment(
             payment_key=str(uuid4()),
+            client_key=client_key,
             company_key=payload["company_key"].lower(),
             account_key=payload["account_key"].lower(),
             method=method,
@@ -52,8 +53,8 @@ class PaymentController(BaseController):
 
         return PaymentDTO.obj_to_dict(existing), False
 
-    def get_by_key(self, payment_key: str) -> dict:
-        payment = self.payment_repository.get_by_key(payment_key)
+    def get_by_key(self, payment_key: str, client_key: str) -> dict:
+        payment = self.payment_repository.get_by_key(payment_key, client_key)
 
         if payment is None:
             raise NotFoundPayment(payment_key)

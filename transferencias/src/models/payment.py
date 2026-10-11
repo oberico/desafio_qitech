@@ -11,6 +11,7 @@ class Payment(Base):
 
     id = Column(Integer, primary_key=True)
     payment_key = Column(CHAR(36), nullable=False)
+    client_key = Column(CHAR(36), nullable=False)
     company_key = Column(CHAR(36), nullable=False)
     account_key = Column(CHAR(36), nullable=False)
     method_id = Column(Integer, ForeignKey(PaymentMethod.id), nullable=False)

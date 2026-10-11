@@ -93,6 +93,7 @@ INSERT INTO payout_result (enumerator) VALUES
 CREATE TABLE payment(
     id                              SERIAL PRIMARY KEY,
     payment_key                     CHAR(36) NOT NULL,
+    client_key                      CHAR(36) NOT NULL,
     company_key                     CHAR(36) NOT NULL,
     account_key                     CHAR(36) NOT NULL,
     method_id                       INTEGER NOT NULL REFERENCES payment_method(id),
