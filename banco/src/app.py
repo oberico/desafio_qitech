@@ -15,7 +15,7 @@ from middlewares import (
     register_session_manager_middleware,
 )
 
-from resources import AccountResource, AuthResource, ClientResource, CompanyResource, HealthCheckResource, LedgerTransactionResource
+from resources import AccountResource, AdminResource, AuthResource, ClientResource, CompanyResource, HealthCheckResource, LedgerTransactionResource
 from utils.logger import setup_logging
 
 setup_logging()
@@ -56,6 +56,7 @@ register_request_context_middleware(application)
 
 health_check_resource = HealthCheckResource()
 account_resource = AccountResource()
+admin_resource = AdminResource()
 auth_resource = AuthResource()
 client_resource = ClientResource()
 company_resource = CompanyResource()
@@ -76,3 +77,4 @@ application.add_api_route("/internal/accounts/{account_key}/block", account_reso
 application.add_api_route("/internal/accounts/{account_key}/unblock", account_resource.on_post_unblock, methods=["POST"])
 application.add_api_route("/internal/internal-accounts", account_resource.on_get_internal, methods=["GET"])
 application.add_api_route("/auth/me", auth_resource.on_get_me, methods=["GET"])
+application.add_api_route("/admin/clients", admin_resource.on_get_clients, methods=["GET"])
