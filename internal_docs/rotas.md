@@ -48,6 +48,11 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 |---|---|---|---|---|
 | 1 | POST | `/ledger/transactions` | serviço | Lançamento idempotente de partida dobrada. Valida fechamento e dedupe. |
 
+**Limites do `POST /ledger/transactions`** (JSON Schema na porta, `400 RNV000001`):
+
+- `debit_minor` e `credit_minor`: inteiros de `1` a `9223372036854775807` (teto do `BIGINT`). Acima do teto → `400 RNV000001`; antes desse limite o estouro virava `500`.
+- `entries`: de `2` a `20` itens (uma transação real tem no máximo 4). Fora da faixa → `400 RNV000001`.
+
 ### Internal (bloqueio por serviço/admin)
 
 | Prioridade | Método | Rota | Acesso | Justificativa |
@@ -87,6 +92,8 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 | 2 | GET | `/payments/{payment_key}` | cliente | Consulta pagamento; IDOR → `404 RNV001025`. |
 | 2 | POST | `/payments/{payment_key}/refund` | cliente | Reembolso; `409 RNV001026` fora da janela, `409 RNV001003` já estornado. Sem Idempotency-Key (estado `held`→`refunded` guarda). |
 | 3 | GET | `/payments` | cliente | Lista paginada do lojista. |
+
+**Limite do `POST /payments`:** `amount_minor` deve ficar entre `1` e `9223372036854775807` (teto do `BIGINT`). `<= 0` ou acima do teto → `422 RNV001023`; antes desse limite o valor acima do teto virava `500`.
 
 ### Payout (saída de dinheiro)
 

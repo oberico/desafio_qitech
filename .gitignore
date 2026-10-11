@@ -14,6 +14,7 @@ internal_docs/*
 !internal_docs/catalogo-de-erros.md
 !internal_docs/mocks-externos.md
 !internal_docs/limites-e-evolucao.md
+!internal_docs/checkup-de-testes.md
 # --- Dados -------------------------------------------------
 *.csv
 *.xlsx
