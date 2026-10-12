@@ -59,7 +59,7 @@ Python 3.11 · FastAPI · SQLAlchemy · PostgreSQL · Docker Compose · pytest �
 
 ## Documentação
 
-As decisões e o raciocínio do projeto estão na RFC. No repositório:
+As decisões e o raciocínio do projeto estão na [RFC](internal_docs/rfc-rnv-v8.0.md): arquitetura, caminho do dinheiro, concorrência, idempotência, tradeoffs e riscos aceitos. Os contratos:
 
 - [Rotas](internal_docs/rotas.md): o contrato de cada endpoint.
 - [Catálogo de erros](internal_docs/catalogo-de-erros.md): todos os códigos `RNV`.
