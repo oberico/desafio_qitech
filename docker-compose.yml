@@ -55,6 +55,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${TRANSF_DB_USER:-rnv}:${TRANSF_DB_PASSWORD:-rnv}@transferencias-db:5432/${TRANSF_DB_NAME:-transferencias}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-admin-token-dev}
       CURSOR_SECRET: ${CURSOR_SECRET:-cursor-secret-dev}
       BANK_API_URL: http://banco-api:8001
       INTERBANK_API_URL: http://external-mocks:8003
@@ -105,6 +106,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${TRANSF_DB_USER:-rnv}:${TRANSF_DB_PASSWORD:-rnv}@transferencias-db:5432/${TRANSF_DB_NAME:-transferencias}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-admin-token-dev}
       CURSOR_SECRET: ${CURSOR_SECRET:-cursor-secret-dev}
       BANK_API_URL: http://banco-fault-proxy:8080
       INTERBANK_API_URL: http://external-mocks:8003

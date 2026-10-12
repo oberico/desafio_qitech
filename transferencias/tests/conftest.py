@@ -3,6 +3,7 @@ import os
 import pytest
 import requests
 
+from tests.utils.admin_requests import AdminRequests
 from tests.utils.bank_requests import BankRequests
 from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.payment_requests import PaymentRequests
@@ -11,6 +12,7 @@ from tests.utils.request_generator import RequestGenerator
 TRANSFERENCIAS_API_URL = os.getenv("TRANSFERENCIAS_API_URL", "http://localhost:8002")
 BANCO_API_URL = os.getenv("BANCO_API_URL", "http://localhost:8001")
 INTERNAL_TOKEN = os.getenv("INTERNAL_TOKEN", "internal-token-dev")
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "admin-token-dev")
 
 
 def exit_unless_up(name: str, url: str) -> None:
@@ -38,6 +40,16 @@ def api(api_url, api_is_up) -> RequestGenerator:
 @pytest.fixture(scope="session")
 def internal_token() -> str:
     return INTERNAL_TOKEN
+
+
+@pytest.fixture(scope="session")
+def admin_token() -> str:
+    return ADMIN_TOKEN
+
+
+@pytest.fixture(scope="session")
+def admin(api) -> AdminRequests:
+    return AdminRequests(api)
 
 
 @pytest.fixture(scope="session")

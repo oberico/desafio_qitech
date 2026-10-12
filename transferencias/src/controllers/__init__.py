@@ -5,3 +5,4 @@ from controllers.payment_method_controller import PaymentMethodController
 from controllers.payout_controller import PayoutController
 from controllers.in_flight_controller import InFlightController
 from controllers.payout_reconcile_controller import PayoutReconcileController
+from controllers.admin_controller import AdminController

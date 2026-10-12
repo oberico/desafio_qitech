@@ -3,3 +3,4 @@ from middlewares.request_logger import register_request_logger_middleware
 from middlewares.internal_token import register_internal_token_middleware
 from middlewares.session_manager import register_session_manager_middleware
 from middlewares.client_auth import register_client_auth_middleware
+from middlewares.admin_auth import register_admin_auth_middleware
