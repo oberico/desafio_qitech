@@ -8,6 +8,7 @@ from constants import SCHEMAS_DIR
 from controllers.base_controller import BaseController
 from dtos import AccountBalanceDTO, AccountDTO, AccountStatementDTO, InternalAccountDTO
 from errors import (
+    AccountHasBalance,
     AccountNotActive,
     AccountNotBlocked,
     AccountNotFound,
@@ -113,6 +114,8 @@ class AccountController(BaseController):
             raise AccountNotFound(account_key)
         if account.status.enumerator != AccountStatus.ACTIVE:
             raise AccountNotActive()
+        if self.ledger_repository.balance_of(account.id) != 0:
+            raise AccountHasBalance()
 
         self.account_repository.change_status(account, self.account_repository.get_status(AccountStatus.CLOSED))
 
