@@ -55,7 +55,7 @@ jobs:
         run: |
           mkdir -p reports
           cd transferencias
-          timeout 300 python -m pytest tests/ --junitxml=../reports/transferencias.xml
+          timeout 300 python -m pytest tests/ -m "not fault" --junitxml=../reports/transferencias.xml
 
       - name: Start fault-injection profile
         id: fault_up

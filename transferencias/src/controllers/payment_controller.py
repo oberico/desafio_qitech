@@ -14,27 +14,35 @@ from errors import (
     InvalidAmount,
     NotFoundCompany,
     NotFoundPayment,
+    PaymentAlreadyRefunded,
+    PaymentOutsideWindow,
 )
-from models import Payment, PaymentStatus
-from repositories import PaymentRepository
+from models import Payment, PaymentStatus, PaymentStatusEvent
+from repositories import PaymentRepository, PaymentTransitionRepository
+from utils.cursor import decode_cursor, encode_cursor
+from utils.pagination import build_page, page_size
 from utils.payload_hash import payload_hash
 from utils.schema_handler import validate_json
 
 POST_PAYMENT_SCHEMA = os.path.join(SCHEMAS_DIR, "post_payment.json")
+GET_PAYMENTS_SCHEMA = os.path.join(SCHEMAS_DIR, "get_payments.json")
 ACTIVE_ACCOUNT_STATUS = "active"
+MAX_AMOUNT_MINOR = 9223372036854775807
+REFUND_REASON = "refund"
 
 
 class PaymentController(BaseController):
     def __init__(self, session) -> None:
         super().__init__(session)
         self.payment_repository = PaymentRepository(session)
+        self.transition_repository = PaymentTransitionRepository(session)
         self.bank_connector = BankConnector()
 
     def create(self, payload: dict, idempotency_key: str, client_key: str, companies: list) -> tuple:
         validate_json(payload, POST_PAYMENT_SCHEMA)
         account_key = self._authorized_account_key(payload["company_key"], companies)
 
-        if payload["amount_minor"] <= 0:
+        if not 0 < payload["amount_minor"] <= MAX_AMOUNT_MINOR:
             raise InvalidAmount(payload["amount_minor"])
 
         method = self.payment_repository.get_method(payload["method"])
@@ -73,6 +81,59 @@ class PaymentController(BaseController):
             raise NotFoundPayment(payment_key)
 
         return PaymentDTO.obj_to_dict(payment)
+
+    def list_page(self, query: dict, client_key: str) -> dict:
+        validate_json(query, GET_PAYMENTS_SCHEMA)
+        size = page_size(query)
+        before_id = decode_cursor(query["cursor"]) if "cursor" in query else None
+
+        payments = self.payment_repository.list_newest_first(client_key, size + 1, before_id, query.get("status"))
+        return build_page(payments, size, PaymentDTO.obj_to_dict, lambda payment: encode_cursor(payment.id))
+
+    def refund(self, payment_key: str, client_key: str) -> dict:
+        payment = self.payment_repository.get_locked_by_key(payment_key, client_key)
+
+        if payment is None:
+            raise NotFoundPayment(payment_key)
+
+        held = self.payment_repository.get_status(PaymentStatus.HELD)
+        refunded = self.payment_repository.get_status(PaymentStatus.REFUNDED)
+
+        if payment.status_id == refunded.id:
+            self.session.rollback()
+            raise PaymentAlreadyRefunded()
+        if payment.status_id != held.id or not self.transition_repository.is_allowed(held.id, refunded.id):
+            self.session.rollback()
+            raise PaymentOutsideWindow()
+
+        self._post_refund(payment)
+        payment.status = refunded
+        self.payment_repository.add_status_event(
+            PaymentStatusEvent(
+                payment_id=payment.id,
+                status_id=refunded.id,
+                reason=REFUND_REASON,
+                event_datetime=datetime.now(timezone.utc),
+            )
+        )
+        payment_dto = PaymentDTO.obj_to_dict(payment)
+        self.session.commit()
+        return payment_dto
+
+    def _post_refund(self, payment: Payment) -> None:
+        refund = {
+            "type": "refund",
+            "reverses_transaction_key": payment.transaction_key,
+            "entries": [
+                {"account_code": "in_transit", "debit_minor": payment.amount_minor},
+                {"account_code": "reserves", "credit_minor": payment.amount_minor},
+            ],
+        }
+        try:
+            self.bank_connector.post_ledger_transaction(refund, f"refund:{payment.payment_key}")
+        except BankUnavailable:
+            self.session.rollback()
+            raise
 
     def _post_receipt(self, payment: Payment) -> str:
         receipt = {

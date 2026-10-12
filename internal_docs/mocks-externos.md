@@ -25,7 +25,7 @@ Simula o sistema externo que executa a saída do dinheiro (passo 7 da RFC v7.2).
 
 ### Quem chama
 
-O Transferências, em `connectors/interbank_connector.py`, durante `POST /internal/payouts/reconcile`. URL base na env `INTERBANK_API_URL` (ex.: `http://external-mocks:8003`). Timeout do conector na env `INTERBANK_TIMEOUT_SECONDS` (=5): sem resposta em 5s a tentativa vira `timeout`. Cada chamada vira uma linha em `payout_attempt` (resultado `confirmed`, `rejected` ou `timeout`).
+O Transferências, em `connectors/interbank_connector.py`, durante `POST /internal/payouts/reconcile`. URL base na env `INTERBANK_API_URL` (ex.: `http://external-mocks:8003`). Timeout do conector na env `INTERBANK_TIMEOUT_SECONDS` (=5): sem resposta em 5s a tentativa vira `timeout`. O conector também trata como `timeout` erro de conexão, `504` e qualquer resposta fora de `200` ou `422 refused` (detalhe em `rotas.md`, `POST /internal/payouts/reconcile`). O corpo enviado é exatamente `{payout_key, amount_minor, purpose, destination}`. Cada chamada vira uma linha em `payout_attempt` (resultado `confirmed`, `rejected` ou `timeout`).
 
 ### `POST /interbank/transfers`
 

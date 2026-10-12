@@ -1,1 +1,2 @@
 from connectors.bank_connector import BankConnector
+from connectors.interbank_connector import InterbankConnector

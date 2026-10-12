@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-SERVICES = ["banco", "transferencias"]
+SERVICES = ["banco", "transferencias", "external-mocks"]
 
 
 def targets_a_path(args) -> bool:

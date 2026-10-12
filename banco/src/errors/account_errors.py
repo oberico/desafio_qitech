@@ -45,13 +45,12 @@ class AccountNotBlocked(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
-class AccountHasBalance(QIException):
-    code = "RNV001012"
+class AccountHasFundsInFlight(QIException):
+    code = "RNV001035"
 
     def __init__(self) -> None:
-        title = "Account Has Balance"
-        http_status = 409
-        description = "The account still has balance. Withdraw it before closing the account."
-        translation = "A conta ainda tem saldo. Saque antes de encerrar a conta."
+        title = "Account Has Funds or Values In Transit"
+        http_status = 422
+        description = "The account has a balance or values in transit; closing requires a zero balance and nothing pending."
+        translation = "Conta com saldo ou valores em trânsito; encerramento exige saldo zero e nada pendente."
         super().__init__(title, self.code, http_status, description, translation)
-

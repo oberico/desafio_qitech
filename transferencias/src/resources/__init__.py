@@ -1,2 +1,7 @@
 from resources.health_check import HealthCheckResource
 from resources.payment import PaymentResource
+from resources.settlement import SettlementResource
+from resources.payment_method import PaymentMethodResource
+from resources.payout import PayoutResource
+from resources.in_flight import InFlightResource
+from resources.payout_reconcile import PayoutReconcileResource

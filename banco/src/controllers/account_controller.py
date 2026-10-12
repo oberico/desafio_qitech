@@ -2,13 +2,13 @@ import os
 from datetime import datetime
 from uuid import uuid4
 
-from connectors import MockBureauConnector
+from connectors import MockBureauConnector, TransferenciasConnector
 from connectors.mock_bureau_connector import REJECTION_REASON
 from constants import SCHEMAS_DIR
 from controllers.base_controller import BaseController
 from dtos import AccountBalanceDTO, AccountDTO, AccountStatementDTO, InternalAccountDTO
 from errors import (
-    AccountHasBalance,
+    AccountHasFundsInFlight,
     AccountNotActive,
     AccountNotBlocked,
     AccountNotFound,
@@ -34,7 +34,8 @@ class AccountController(BaseController):
         self.company_repository = CompanyRepository(session)
         self.ledger_repository = LedgerRepository(session)
         self.bureau_connector = MockBureauConnector()
-        
+        self.transferencias_connector = TransferenciasConnector()
+
     def list_internal(self) -> list:
         return [InternalAccountDTO.obj_to_dict(account) for account in self.account_repository.list_internal()]
 
@@ -115,7 +116,11 @@ class AccountController(BaseController):
         if account.status.enumerator != AccountStatus.ACTIVE:
             raise AccountNotActive()
         if self.ledger_repository.balance_of(account.id) != 0:
-            raise AccountHasBalance()
+            raise AccountHasFundsInFlight()
+
+        in_flight = self.transferencias_connector.count_in_flight(account.account_key)
+        if in_flight["held_payments"] > 0 or in_flight["pending_payouts"] > 0:
+            raise AccountHasFundsInFlight()
 
         self.account_repository.change_status(account, self.account_repository.get_status(AccountStatus.CLOSED))
 

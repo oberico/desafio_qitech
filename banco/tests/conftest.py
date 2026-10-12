@@ -4,6 +4,7 @@ import pytest
 import requests
 
 from tests.utils.account_requests import AccountRequests
+from tests.utils.admin_requests import AdminRequests
 from tests.utils.client_requests import ClientRequests
 from tests.utils.company_requests import CompanyRequests
 from tests.utils.internal_account_requests import InternalAccountRequests
@@ -15,6 +16,7 @@ from tests.utils.request_generator import RequestGenerator
 
 BANCO_API_URL = os.getenv("BANCO_API_URL", "http://localhost:8001")
 INTERNAL_TOKEN = os.getenv("INTERNAL_TOKEN", "internal-token-dev")
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "admin-token-dev")
 
 
 @pytest.fixture(scope="session")
@@ -38,6 +40,16 @@ def api(api_url, api_is_up) -> RequestGenerator:
 @pytest.fixture(scope="session")
 def internal_token() -> str:
     return INTERNAL_TOKEN
+
+
+@pytest.fixture(scope="session")
+def admin_token() -> str:
+    return ADMIN_TOKEN
+
+
+@pytest.fixture(scope="session")
+def admin(api) -> AdminRequests:
+    return AdminRequests(api)
 
 
 @pytest.fixture(scope="session")

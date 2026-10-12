@@ -1,7 +1,10 @@
+from datetime import datetime
+
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from models import Payment, PaymentMethod, PaymentStatus
+from models import Payment, PaymentMethod, PaymentStatus, PaymentStatusEvent
 
 
 IDEMPOTENCY_CONSTRAINT = "uq_payment_idempotency"
@@ -36,8 +39,61 @@ class PaymentRepository:
             .first()
         )
 
+    def list_newest_first(self, client_key: str, limit: int, before_id: int = None, status: str = None) -> list:
+        query = self.session.query(Payment).filter(Payment.client_key == client_key)
+        if status is not None:
+            query = query.join(PaymentStatus, PaymentStatus.id == Payment.status_id).filter(
+                PaymentStatus.enumerator == status
+            )
+        if before_id is not None:
+            query = query.filter(Payment.id < before_id)
+        return query.order_by(Payment.id.desc()).limit(limit).all()
+
+    def get_locked_by_key(self, payment_key: str, client_key: str) -> Payment:
+        return (
+            self.session.query(Payment)
+            .filter(Payment.payment_key == payment_key, Payment.client_key == client_key)
+            .with_for_update()
+            .populate_existing()
+            .first()
+        )
+
+    def list_due_ids(self, status_id: int, as_of: datetime) -> list:
+        rows = (
+            self.session.query(Payment.id)
+            .filter(Payment.status_id == status_id, Payment.release_at <= as_of)
+            .order_by(Payment.id)
+            .all()
+        )
+        return [row.id for row in rows]
+
+    def get_locked_by_id(self, payment_id: int) -> Payment:
+        return (
+            self.session.query(Payment)
+            .filter(Payment.id == payment_id)
+            .with_for_update()
+            .populate_existing()
+            .first()
+        )
+
+    def count_by_account_and_status(self, account_key: str, status_id: int) -> int:
+        return (
+            self.session.query(func.count(Payment.id))
+            .filter(Payment.account_key == account_key, Payment.status_id == status_id)
+            .scalar()
+        )
+
+    def add_status_event(self, event: PaymentStatusEvent) -> None:
+        self.session.add(event)
+        self.session.flush()
+
     def get_method(self, enumerator: str) -> PaymentMethod:
-        return self.session.query(PaymentMethod).filter(PaymentMethod.enumerator == enumerator).first()
+        return (
+            self.session.query(PaymentMethod)
+            .filter(PaymentMethod.enumerator == enumerator)
+            .order_by(PaymentMethod.version.desc())
+            .first()
+        )
 
     def get_status(self, enumerator: str) -> PaymentStatus:
         return self.session.query(PaymentStatus).filter(PaymentStatus.enumerator == enumerator).first()

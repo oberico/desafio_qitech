@@ -54,3 +54,25 @@ class MethodNotAllowed(QIException):
         description = "The HTTP method is not allowed for this route."
         translation = "O método HTTP não é permitido para esta rota."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class ServiceBusy(QIException):
+    code = "RNV000006"
+
+    def __init__(self) -> None:
+        title = "Service Busy"
+        http_status = 503
+        description = "The service could not complete the request because a service it depends on did not answer in time; nothing was changed. Retry shortly."
+        translation = "O serviço não conseguiu concluir a requisição porque um serviço do qual depende não respondeu a tempo; nada foi alterado. Tente novamente em instantes."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class AdminForbidden(QIException):
+    code = "RNV001027"
+
+    def __init__(self) -> None:
+        title = "Forbidden"
+        http_status = 403
+        description = "This route is restricted to administrators."
+        translation = "Esta rota é restrita a administradores."
+        super().__init__(title, self.code, http_status, description, translation)
