@@ -7,9 +7,10 @@ class TestAccountStatement:
         status, response = accounts.get_statement(active_account, client_token)
 
         assert status == 200
-        assert response["account_key"] == active_account
-        assert response["entries"] == []
-        assert response["has_more"] is False
+        assert response["data"] == []
+        assert response["limit"] == 50
+        assert response["cursor"] is None
+        assert response["is_last_page"] is True
 
     def test_statement_shows_credit_entry(self, accounts, active_account, client_token, credit_account):
         transaction_key = credit_account(active_account, 10000)
@@ -17,8 +18,8 @@ class TestAccountStatement:
         status, response = accounts.get_statement(active_account, client_token)
 
         assert status == 200
-        assert len(response["entries"]) == 1
-        entry = response["entries"][0]
+        assert len(response["data"]) == 1
+        entry = response["data"][0]
         assert entry["transaction_key"] == transaction_key
         assert entry["type"] == "settlement"
         assert entry["debit_minor"] == 0
@@ -33,7 +34,7 @@ class TestAccountStatement:
         status, response = accounts.get_statement(active_account, client_token)
 
         assert status == 200
-        credits = [entry["credit_minor"] for entry in response["entries"]]
+        credits = [entry["credit_minor"] for entry in response["data"]]
         assert credits == [3000, 2000, 1000]
 
     def test_statement_rebuilds_the_balance(self, accounts, ledger, active_account, client_token, credit_account):
@@ -53,7 +54,7 @@ class TestAccountStatement:
         status, balance = accounts.get_balance(active_account, client_token)
         assert status == 200
 
-        rebuilt = sum(entry["credit_minor"] - entry["debit_minor"] for entry in statement["entries"])
+        rebuilt = sum(entry["credit_minor"] - entry["debit_minor"] for entry in statement["data"])
         assert rebuilt == balance["balance_minor"]
 
     def test_statement_shows_only_its_own_entries(self, accounts, open_account, active_account, client_token, other_client_token, credit_account):
@@ -64,4 +65,4 @@ class TestAccountStatement:
         status, response = accounts.get_statement(active_account, client_token)
 
         assert status == 200
-        assert [entry["transaction_key"] for entry in response["entries"]] == [transaction_key]
+        assert [entry["transaction_key"] for entry in response["data"]] == [transaction_key]
