@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -38,6 +39,16 @@ class PaymentRepository:
             .first()
         )
 
+    def list_newest_first(self, client_key: str, limit: int, before_id: int = None, status: str = None) -> list:
+        query = self.session.query(Payment).filter(Payment.client_key == client_key)
+        if status is not None:
+            query = query.join(PaymentStatus, PaymentStatus.id == Payment.status_id).filter(
+                PaymentStatus.enumerator == status
+            )
+        if before_id is not None:
+            query = query.filter(Payment.id < before_id)
+        return query.order_by(Payment.id.desc()).limit(limit).all()
+
     def get_locked_by_key(self, payment_key: str, client_key: str) -> Payment:
         return (
             self.session.query(Payment)
@@ -63,6 +74,13 @@ class PaymentRepository:
             .with_for_update()
             .populate_existing()
             .first()
+        )
+
+    def count_by_account_and_status(self, account_key: str, status_id: int) -> int:
+        return (
+            self.session.query(func.count(Payment.id))
+            .filter(Payment.account_key == account_key, Payment.status_id == status_id)
+            .scalar()
         )
 
     def add_status_event(self, event: PaymentStatusEvent) -> None:

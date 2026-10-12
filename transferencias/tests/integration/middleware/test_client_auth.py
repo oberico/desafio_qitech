@@ -6,6 +6,7 @@ ERROR_FIELDS = {"title", "description", "translation", "code"}
 
 PROTECTED_ROUTES = {
     "post_payments": ("POST", "/payments", {}),
+    "list_payments": ("GET", "/payments", None),
     "get_payment": ("GET", f"/payments/{RandomGenerator.uuid()}", None),
     "refund_payment": ("POST", f"/payments/{RandomGenerator.uuid()}/refund", None),
 }

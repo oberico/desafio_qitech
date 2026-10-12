@@ -1,12 +1,12 @@
 from uuid import uuid4
 
-from connectors import MockBureauConnector
+from connectors import MockBureauConnector, TransferenciasConnector
 from connectors.mock_bureau_connector import REJECTION_REASON
 from controllers.base_controller import BaseController
 from dtos import AccountDTO, InternalAccountDTO
-from errors import AccountNotActive, AccountNotBlocked, AccountNotFound, CompanyAlreadyHasAccount, CompanyNotFound
+from errors import AccountHasFundsInFlight, AccountNotActive, AccountNotBlocked, AccountNotFound, CompanyAlreadyHasAccount, CompanyNotFound
 from models import Account, AccountClass, AccountStatus
-from repositories import AccountRepository, CompanyRepository
+from repositories import AccountRepository, CompanyRepository, LedgerRepository
 
 CLIENT_ACCOUNT_NORMAL_BALANCE = "c"
 CONSTRAINT_ERRORS = {"account_company_id_key": CompanyAlreadyHasAccount}
@@ -17,7 +17,9 @@ class AccountController(BaseController):
         super().__init__(session)
         self.account_repository = AccountRepository(session)
         self.company_repository = CompanyRepository(session)
+        self.ledger_repository = LedgerRepository(session)
         self.bureau_connector = MockBureauConnector()
+        self.transferencias_connector = TransferenciasConnector()
 
     def list_internal(self) -> list:
         return [InternalAccountDTO.obj_to_dict(account) for account in self.account_repository.list_internal()]
@@ -65,6 +67,12 @@ class AccountController(BaseController):
             raise AccountNotFound(account_key)
         if account.status.enumerator != AccountStatus.ACTIVE:
             raise AccountNotActive()
+        if self.ledger_repository.balance_of(account.id) != 0:
+            raise AccountHasFundsInFlight()
+
+        in_flight = self.transferencias_connector.count_in_flight(account.account_key)
+        if in_flight["held_payments"] > 0 or in_flight["pending_payouts"] > 0:
+            raise AccountHasFundsInFlight()
 
         self.account_repository.change_status(account, self.account_repository.get_status(AccountStatus.CLOSED))
 
