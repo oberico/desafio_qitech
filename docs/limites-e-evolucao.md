@@ -62,7 +62,7 @@ Se no cenário B o cliente **não retentar**, sobra no Banco um receipt `settled
 
 ### Inconsistência: o texto do `RNV001017`
 
-O catálogo (`internal_docs/catalogo-de-erros.md`, linha do `RNV001017`) diz "Banco indisponível (nada foi gravado)", e `transferencias/src/errors/custom_errors.py` (`BankUnavailable`) diz "The bank service is unavailable; nothing was recorded." / "O Banco está indisponível; nada foi gravado."
+O catálogo (`docs/catalogo-de-erros.md`, linha do `RNV001017`) diz "Banco indisponível (nada foi gravado)", e `transferencias/src/errors/custom_errors.py` (`BankUnavailable`) diz "The bank service is unavailable; nothing was recorded." / "O Banco está indisponível; nada foi gravado."
 
 Isso é verdade **no Transferências** e impreciso no timeout: o Banco pode ter gravado o receipt (cenário B). Redação adotada (aplicada em 2026-10-11, com aprovação do usuário, no catálogo e em `custom_errors.py`):
 
