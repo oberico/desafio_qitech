@@ -70,11 +70,18 @@ class TestAdminCompanies:
         assert seen == list(reversed(created_keys))
 
     @pytest.mark.parametrize(
-        "params",
-        [{"limit": "0"}, {"limit": "101"}, {"cursor": RandomGenerator.uuid()}, {"cursor": "x"}, {"cursor": ""}, {"pagina": "2"}],
+        "params, code",
+        [
+            ({"limit": "0"}, "RNV000009"),
+            ({"limit": "101"}, "RNV000009"),
+            ({"cursor": RandomGenerator.uuid()}, "RNV000011"),
+            ({"cursor": "x"}, "RNV000011"),
+            ({"cursor": ""}, "RNV000011"),
+            ({"pagina": "2"}, "RNV000008"),
+        ],
         ids=["limit_zero", "limit_too_big", "public_key_cursor", "malformed_cursor", "empty_cursor", "unknown_parameter"],
     )
-    def test_refuses_invalid_query(self, admin, admin_token, params):
+    def test_refuses_invalid_query(self, admin, admin_token, params, code):
         status, response = admin.get(ROUTE, admin_token, params)
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == code

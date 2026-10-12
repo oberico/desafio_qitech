@@ -22,19 +22,33 @@ def birthdate_for_age(age_in_years: int, days_offset: int = 0) -> str:
 
 class TestClientCreate:
     @pytest.mark.parametrize(
-        "body",
-        [{}, [], PayloadGenerator.create_client_payload(unexpected=1)],
+        "body, code",
+        [
+            ({}, "RNV000007"),
+            ([], "RNV000001"),
+            (PayloadGenerator.create_client_payload(unexpected=1), "RNV000008"),
+        ],
         ids=["empty_body", "not_an_object", "unknown_field"],
     )
-    def test_refuses_invalid_body(self, clients, body):
+    def test_refuses_invalid_body(self, clients, body, code):
         status, response = clients.post_client(body)
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == code
 
     def test_invalid_body_description_names_the_body_readably(self, clients):
         _, response = clients.post_client([])
         assert response["description"].startswith("The request does not match the expected schema: body: ")
         assert "('" not in response["description"]
+
+
+    def test_body_that_is_not_an_object_has_a_specific_translation(self, clients):
+        _, response = clients.post_client([])
+        assert response["translation"] == "O corpo da requisição precisa ser um objeto JSON."
+
+    def test_unknown_field_translation_names_the_field(self, clients):
+        _, response = clients.post_client(PayloadGenerator.create_client_payload(unexpected=1))
+        assert response["title"] == "Field Not Allowed"
+        assert response["translation"] == "Campo não permitido: unexpected."
 
     @pytest.mark.parametrize("field", ["cpf", "name", "birthdate", "email"])
     def test_refuses_missing_field(self, clients, field):
@@ -42,21 +56,22 @@ class TestClientCreate:
         del payload[field]
         status, response = clients.post_client(payload)
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000007"
+        assert response["translation"] == f"Campo obrigatório ausente: {field}."
 
     @pytest.mark.parametrize(
-        "field, value",
+        "field, value, code",
         [
-            ("cpf", 52998224725),
-            ("cpf", "52998224725"),
-            ("name", None),
-            ("name", ""),
-            ("name", "   "),
-            ("name", "a" * 256),
-            ("birthdate", "17/05/1990"),
-            ("email", "fulana"),
-            ("email", "fulana@teste"),
-            ("email", "a" * 250 + "@teste.com"),
+            ("cpf", 52998224725, "RNV000009"),
+            ("cpf", "52998224725", "RNV000009"),
+            ("name", None, "RNV000009"),
+            ("name", "", "RNV000010"),
+            ("name", "   ", "RNV000009"),
+            ("name", "a" * 256, "RNV000010"),
+            ("birthdate", "17/05/1990", "RNV000009"),
+            ("email", "fulana", "RNV000009"),
+            ("email", "fulana@teste", "RNV000009"),
+            ("email", "a" * 250 + "@teste.com", "RNV000010"),
         ],
         ids=[
             "cpf_as_number",
@@ -71,11 +86,12 @@ class TestClientCreate:
             "email_over_255_characters",
         ],
     )
-    def test_refuses_malformed_field(self, clients, field, value):
+    def test_refuses_malformed_field(self, clients, field, value, code):
         payload = PayloadGenerator.create_client_payload(**{field: value})
         status, response = clients.post_client(payload)
         assert status == 400, f"o campo '{field}' aceitou o valor {value!r}"
-        assert response["code"] == "RNV000001"
+        assert response["code"] == code
+        assert field in response["translation"]
 
     def test_schema_error_description_names_the_offending_field(self, clients):
         payload = PayloadGenerator.create_client_payload(birthdate="17/05/1990")
@@ -146,15 +162,24 @@ class TestClientCreate:
         assert response["code"] == "RNV001029"
 
     @pytest.mark.parametrize(
-        "birthdate",
-        ["2000-02-30", "9999-99-99", birthdate_for_age(0, days_offset=1)],
+        "birthdate, code",
+        [
+            ("2000-02-30", "RNV000009"),
+            ("9999-99-99", "RNV000009"),
+            (birthdate_for_age(0, days_offset=1), "RNV000010"),
+        ],
         ids=["nonexistent_day", "nonexistent_month", "tomorrow"],
     )
-    def test_refuses_impossible_birthdate(self, clients, birthdate):
+    def test_refuses_impossible_birthdate(self, clients, birthdate, code):
         payload = PayloadGenerator.create_client_payload(birthdate=birthdate)
         status, response = clients.post_client(payload)
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == code
+
+    def test_future_birthdate_translation_says_it_cannot_be_in_the_future(self, clients):
+        payload = PayloadGenerator.create_client_payload(birthdate="2999-01-01")
+        _, response = clients.post_client(payload)
+        assert response["translation"] == "O campo birthdate está fora do limite: não pode estar no futuro."
 
     def test_future_birthdate_description_says_it_cannot_be_in_the_future(self, clients):
         payload = PayloadGenerator.create_client_payload(birthdate="2999-01-01")

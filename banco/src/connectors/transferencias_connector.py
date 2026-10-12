@@ -1,7 +1,7 @@
 import requests
 
 from constants import INTERNAL_TOKEN, TRANSFERENCIAS_API_URL, TRANSFERENCIAS_TIMEOUT_SECONDS
-from errors import ServiceBusy
+from errors import TransferenciasUnavailable
 
 IN_FLIGHT_FIELDS = ("held_payments", "pending_payouts")
 
@@ -16,10 +16,10 @@ class TransferenciasConnector:
             )
             summary = response.json()
         except (requests.exceptions.RequestException, ValueError) as error:
-            raise ServiceBusy() from error
+            raise TransferenciasUnavailable() from error
 
         if response.status_code != 200 or not self._is_valid(summary):
-            raise ServiceBusy()
+            raise TransferenciasUnavailable()
         return summary
 
     @staticmethod

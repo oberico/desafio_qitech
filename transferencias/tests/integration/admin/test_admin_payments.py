@@ -187,27 +187,34 @@ class TestAdminPayments:
         status, response = admin.get(ROUTE, admin_token, {"limit": limit})
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000009"
 
     @pytest.mark.parametrize("value", ["banana", "", "HELD"])
     def test_refuses_invalid_status(self, admin, admin_token, value):
         status, response = admin.get(ROUTE, admin_token, {"status": value})
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000009"
 
     @pytest.mark.parametrize("value", ["not-a-uuid", "", "123"])
     def test_refuses_invalid_company_key(self, admin, admin_token, value):
         status, response = admin.get(ROUTE, admin_token, {"company_key": value})
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000009"
 
     def test_refuses_unknown_parameter(self, admin, admin_token):
         status, response = admin.get(ROUTE, admin_token, {"page": "2"})
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000008"
+
+    def test_unknown_parameter_error_points_to_the_query(self, admin, admin_token):
+        status, response = admin.get(ROUTE, admin_token, {"page": "2"})
+
+        assert status == 400
+        assert "query: " in response["description"]
+        assert "body" not in response["description"]
 
     @pytest.mark.parametrize(
         "cursor",
@@ -218,7 +225,7 @@ class TestAdminPayments:
         status, response = admin.get(ROUTE, admin_token, {"cursor": cursor})
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000011"
 
     def test_refuses_tampered_cursor(self, admin, admin_token, merchant, create_payments):
         create_payments(merchant, 2)
@@ -229,4 +236,4 @@ class TestAdminPayments:
         status, response = admin.get(ROUTE, admin_token, {"limit": 1, "cursor": tampered})
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000011"

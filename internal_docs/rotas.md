@@ -7,7 +7,9 @@
 > Acessos: **público** (bypass) · **cliente** (`Authorization`) · **admin** (`/admin/*`) ·
 > **serviço** (`INTERNAL-TOKEN`, rotas `/internal/*` e chamadas entre serviços).
 >
-> Escritas exigem header `Idempotency-Key` (ausente → `400 RNV000001`).
+> Escritas exigem header `Idempotency-Key` (ausente ou fora do tamanho → `400 RNV000012`).
+>
+> Erros de formato (`400`) têm um código por tipo: `RNV000001` corpo que não é objeto JSON, `RNV000007` campo obrigatório ausente, `RNV000008` campo ou parâmetro não permitido, `RNV000009` tipo ou formato inválido, `RNV000010` valor fora do limite, `RNV000011` cursor inválido, `RNV000012` `Idempotency-Key` ausente ou inválida. A `translation` cita o campo e o motivo. Detalhes em `catalogo-de-erros.md`.
 
 ---
 
@@ -40,21 +42,22 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 | 1 | GET | `/accounts/{account_key}/balance` | cliente | Saldo derivado. **Leitura passa com conta blocked/closed.** |
 | 1 | GET | `/accounts/{account_key}/statement` | cliente | Extrato (entries). **Leitura passa com conta blocked/closed.** |
 | 2 | GET | `/accounts/{account_key}` | cliente | Dados da conta: `account_key`, `company_key`, `status`, `currency` e `created_at` (ISO-8601 com fuso); IDOR → `404 RNV001021`. |
-| 2 | POST | `/accounts/{account_key}/close` | cliente | Encerra; `409 RNV001009` se a conta não está `active`; `422 RNV001035` se tem saldo ou valores em trânsito (payment `held`/payout `pending` no Transferências); `503 RNV000006` se o Transferências não responde (fail-closed). Ordem: lock da conta, status, saldo, consulta in-flight, muda status, commit. |
+| 2 | POST | `/accounts/{account_key}/close` | cliente | Encerra; `409 RNV001009` se a conta não está `active`; `422 RNV001035` se tem saldo ou valores em trânsito (payment `held`/payout `pending` no Transferências); `503 RNV001036` se o Transferências não responde (fail-closed). Ordem: lock da conta, status, saldo, consulta in-flight, muda status, commit. |
 
 **`GET /accounts/{account_key}/balance`** (cliente)
 
-- `200 {"account_key", "balance_minor", "currency"}`. O saldo é derivado do ledger (`SUM(credit_minor) - SUM(debit_minor)` das `entry` da conta), nunca armazenado.
+- `200 {"account_key", "balance_minor", "balance_formatted", "currency"}`. O saldo é derivado do ledger (`SUM(credit_minor) - SUM(debit_minor)` das `entry` da conta), nunca armazenado.
+- `balance_formatted` é o mesmo saldo em reais, para leitura humana: `"R$ 1.049,11"` (prefixo `R$`, ponto no milhar, vírgula nos centavos, negativo como `"-R$ 10,00"`). É calculado na resposta com aritmética inteira, nunca gravado; o valor de referência continua sendo `balance_minor`.
 - Leitura passa com a conta `blocked` ou `closed` (a consulta não exige conta `active`).
 - Erros: `401 RNV000003` sem token; `404 RNV001021` para conta inexistente ou de outro cliente (IDOR).
 
 **`GET /accounts/{account_key}/statement`** (cliente)
 
-- Query (todas opcionais, validadas por JSON Schema; parâmetro desconhecido → `400 RNV000001`): `limit` (inteiro de 1 a 100, padrão 50), `cursor` (opaco assinado, o devolvido na resposta anterior), `from` e `to` (ISO-8601 com fuso, filtram `entry.created_at`; `from` depois de `to` → `400 RNV000001`).
+- Query (todas opcionais, validadas por JSON Schema; parâmetro desconhecido → `400 RNV000008`): `limit` (inteiro de 1 a 100, padrão 50), `cursor` (opaco assinado, o devolvido na resposta anterior), `from` e `to` (ISO-8601 com fuso, filtram `entry.created_at`; `from` depois de `to` → `400 RNV000010`).
 - `200 {"data": [...], "limit", "cursor", "is_last_page"}`, do lançamento mais novo para o mais antigo. Cada item de `data`: `transaction_key`, `type`, `debit_minor`, `credit_minor`, `created_at`. `cursor` é `null` na última página.
-- O cursor é opaco e assinado (HMAC com `CURSOR_SECRET`); cursor inventado ou adulterado → `400 RNV000001`. É o mesmo padrão de paginação de `GET /payments` e das rotas admin.
+- O cursor é opaco e assinado (HMAC com `CURSOR_SECRET`); cursor inventado ou adulterado → `400 RNV000011`. É o mesmo padrão de paginação de `GET /payments` e das rotas admin.
 - Leitura passa com a conta `blocked` ou `closed`. Só aparecem lançamentos da conta consultada.
-- Erros: `401 RNV000003`; `404 RNV001021` (conta inexistente ou de outro cliente); `400 RNV000001`.
+- Erros: `401 RNV000003`; `404 RNV001021` (conta inexistente ou de outro cliente); `400 RNV000008` (parâmetro desconhecido), `RNV000009` (`limit` ou data em formato inválido), `RNV000010` (`from` depois de `to`), `RNV000011` (cursor).
 
 ### Ledger
 
@@ -62,10 +65,10 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 |---|---|---|---|---|
 | 1 | POST | `/ledger/transactions` | serviço | Lançamento idempotente de partida dobrada. Valida fechamento e dedupe. |
 
-**Limites do `POST /ledger/transactions`** (JSON Schema na porta, `400 RNV000001`):
+**Limites do `POST /ledger/transactions`** (JSON Schema na porta, `400 RNV000010`):
 
-- `debit_minor` e `credit_minor`: inteiros de `1` a `9223372036854775807` (teto do `BIGINT`). Acima do teto → `400 RNV000001`; antes desse limite o estouro virava `500`.
-- `entries`: de `2` a `20` itens (uma transação real tem no máximo 4). Fora da faixa → `400 RNV000001`.
+- `debit_minor` e `credit_minor`: inteiros de `1` a `9223372036854775807` (teto do `BIGINT`). Acima do teto → `400 RNV000010`; antes desse limite o estouro virava `500`.
+- `entries`: de `2` a `20` itens (uma transação real tem no máximo 4). Fora da faixa → `400 RNV000010`.
 
 ### Internal (bloqueio por serviço/admin)
 
@@ -95,8 +98,8 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 
 - **Query** (JSON Schema, tudo opcional, parâmetro desconhecido recusado): `limit` (inteiro de `1` a `100`, padrão `20`) e `cursor` (string opaca não vazia devolvida na página anterior). `GET /admin/accounts` aceita também `status`: `created`, `active`, `rejected`, `blocked` ou `closed`. `GET /admin/clients` e `GET /admin/companies` não têm filtro.
 - **Resposta `200`:** `{"data": [item...], "limit": n, "cursor": "<cursor opaco>" | null, "is_last_page": bool}`. `cursor` é `null` na última página; lista vazia devolve `data: []` com `is_last_page: true`.
-- **Ordem:** do mais novo para o mais antigo (`id` interno decrescente), keyset sem `COUNT` (busca `limit + 1`). Cursor assinado (HMAC-SHA256 com `CURSOR_SECRET`): adulterado, inventado ou malformado → `400 RNV000001`.
-- **Erros comuns:** `400 RNV000001` (`limit` fora de 1..100 ou não inteiro, `status` fora do enumerador, `cursor` inválido, parâmetro desconhecido), `401 RNV000003`, `403 RNV001027`.
+- **Ordem:** do mais novo para o mais antigo (`id` interno decrescente), keyset sem `COUNT` (busca `limit + 1`). Cursor assinado (HMAC-SHA256 com `CURSOR_SECRET`): adulterado, inventado ou malformado → `400 RNV000011`.
+- **Erros comuns:** `400 RNV000009` (`limit` fora de 1..100 ou não inteiro, `status` fora do enumerador), `400 RNV000011` (`cursor` inválido), `400 RNV000008` (parâmetro desconhecido), `401 RNV000003`, `403 RNV001027`.
 
 **Item de `GET /admin/clients`:** `{"client_key", "name", "created_at"}`. Nunca expõe CPF, e-mail, senha ou token.
 
@@ -110,15 +113,20 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 
 ```json
 {
-  "reserves_minor": 0,
+  "reserves_minor": 508900,
+  "reserves_formatted": "R$ 5.089,00",
   "in_transit_minor": 0,
-  "revenue_minor": 0,
+  "in_transit_formatted": "R$ 0,00",
+  "revenue_minor": 508900,
+  "revenue_formatted": "R$ 5.089,00",
   "clients_total_minor": 0,
+  "clients_total_formatted": "R$ 0,00",
   "equation_ok": true
 }
 ```
 
 - `reserves_minor`: saldo da conta `reserves` (ativo, o dinheiro que o banco tem). `in_transit_minor`: saldo de `in_transit` (passivo). `revenue_minor`: saldo de `revenue` (receita, as tarifas). `clients_total_minor`: soma dos saldos de todas as contas de empresa.
+- Cada `*_formatted` é o total ao lado em reais, no mesmo formato de `balance_formatted` (calculado na resposta, nunca gravado).
 - `equation_ok` é `true` quando `reserves_minor == in_transit_minor + clients_total_minor + revenue_minor`. Se vier `false`, o livro está inconsistente.
 - Erros: `401 RNV000003`, `403 RNV001027`. Não há `400` (sem parâmetros).
 
@@ -156,9 +164,11 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
   - `status`: `held`, `settled` ou `refunded`.
 - **Resposta `200`:** `{"data": [PaymentDTO...], "limit": n, "cursor": "<cursor opaco>" | null, "is_last_page": bool}`. `cursor` é `null` na última página.
 - **Ordem:** do mais novo para o mais antigo (`id` interno decrescente). Keyset (`id < id do cursor`), sem `COUNT` (busca `limit + 1`); um payment criado entre duas páginas não repete nem pula itens.
-- **Cursor opaco e assinado:** base64 urlsafe de `<id interno>.<HMAC-SHA256 hex>` com o segredo `CURSOR_SECRET`; o id interno nunca sai em claro e não se forja. Cursor adulterado, inventado ou malformado → `400 RNV000001`. Um cursor de outro cliente só marca posição: a query continua filtrada por `client_key`.
+- **Cursor opaco e assinado:** base64 urlsafe de `<id interno>.<HMAC-SHA256 hex>` com o segredo `CURSOR_SECRET`; o id interno nunca sai em claro e não se forja. Cursor adulterado, inventado ou malformado → `400 RNV000011`. Um cursor de outro cliente só marca posição: a query continua filtrada por `client_key`.
 - **Erros:**
-  - `400 RNV000001`: `limit` fora de 1..100 ou não inteiro, `status` fora do enumerador, `cursor` vazio, adulterado, inventado ou malformado, parâmetro desconhecido.
+  - `400 RNV000009`: `limit` fora de 1..100 ou não inteiro, `status` fora do enumerador.
+  - `400 RNV000011`: `cursor` vazio, adulterado, inventado ou malformado.
+  - `400 RNV000008`: parâmetro desconhecido.
   - `401 RNV000003`: token ausente ou inválido.
 
 **`POST /payments/{payment_key}/refund` — contrato completo.**
@@ -210,7 +220,7 @@ Erros:
 
 Erros:
 
-- `400 RNV000001`: corpo fora do schema, `destination` vazio/acima de 4096 bytes, `purpose` ou `scenario` fora da lista, header ausente.
+- `400`: `RNV000007` campo obrigatório ausente; `RNV000008` campo extra (inclusive `company_key`); `RNV000009` tipo errado ou `purpose`/`scenario` fora da lista; `RNV000010` `destination` vazio ou acima de 4096 bytes; `RNV000012` `Idempotency-Key` ausente ou acima de 50 caracteres; `RNV000001` corpo que não é objeto JSON.
 - `401 RNV000003`: token ausente ou inválido.
 - `403 RNV001031`: conta não `active`.
 - `404 RNV001018`: conta inexistente ou de outro cliente (mesmo código de empresa inexistente: a conta é identificada pela empresa do cliente).
@@ -239,8 +249,8 @@ Erros:
 **`PUT /internal/payment-methods/{method}` — contrato completo.**
 
 - **Acesso:** só `INTERNAL-TOKEN`; sem ele, `403 RNV000002`.
-- **`{method}`:** `pix`, `boleto` ou `card`. Fora do enum → `400 RNV000001`.
-- **Corpo** (JSON Schema na porta, ambos obrigatórios, sem campo extra): `{"fee_bps": <int 0..10000>, "release_window_hours": <int 0..8760>}`. Tipo errado, campo ausente, campo extra ou valor fora da faixa → `400 RNV000001`.
+- **`{method}`:** `pix`, `boleto` ou `card`. Fora do enum → `400 RNV000009`.
+- **Corpo** (JSON Schema na porta, ambos obrigatórios, sem campo extra): `{"fee_bps": <int 0..10000>, "release_window_hours": <int 0..8760>}`. Campo ausente → `400 RNV000007`; campo extra → `400 RNV000008`; tipo errado → `400 RNV000009`; valor fora da faixa → `400 RNV000010`.
 - **Resposta:** `{"method", "version", "fee_bps", "release_window_hours", "created_at"}`.
   - `201`: os valores diferem da versão atual e uma **nova versão** foi gravada.
   - `200`: os valores são **iguais** aos da versão atual; nada é gravado e a resposta é a versão atual (idempotente).
@@ -260,7 +270,7 @@ Versionamento:
 ```
 
 - **Ausente** (corpo vazio ou sem a chave) = relógio do servidor.
-- **Formato:** ISO 8601 **com fuso** (offset ou `Z`). Sem fuso ou não-ISO → `400 RNV000001` (JSON Schema na porta, antes de qualquer consulta).
+- **Formato:** ISO 8601 **com fuso** (offset ou `Z`). Sem fuso ou não-ISO → `400 RNV000009` (JSON Schema na porta, antes de qualquer consulta).
 - **Acesso:** só existe em `/internal/*` (`INTERNAL-TOKEN`; sem ele, `403 RNV000002`). **Nunca** é aceito em rota de cliente: serve a testes e operação, não ao produto.
 - **`POST /internal/settlements`:** libera os `payment` em `held` com `release_at <= as_of`. A chave determinística (`settlement:<payment_key>`) e o `FOR UPDATE` na linha do `payment` continuam valendo; rodar de novo com o mesmo `as_of` é no-op.
 - **`POST /internal/payouts/reconcile`:** `as_of` é o "agora" que decide se a próxima tentativa/backoff do payout já venceu (`last_attempt_at` + espera) e o `now` gravado ao registrar a `payout_attempt`.
@@ -287,7 +297,7 @@ Processamento:
 Erros do job:
 
 - `403 RNV000002`: sem `INTERNAL-TOKEN`.
-- `400 RNV000001`: `as_of` inválido.
+- `400 RNV000009`: `as_of` inválido; `400 RNV000008`: campo extra.
 - Falhas do Banco por item **não** viram erro HTTP: o payment vai para `deferred`.
 
 Idempotência: rodar de novo é seguro. A chave é determinística; o Banco devolve o lançamento existente e o payment é levado a `settled`.
@@ -295,7 +305,7 @@ Idempotência: rodar de novo é seguro. A chave é determinística; o Banco devo
 **`POST /internal/payouts/reconcile` — contrato completo.**
 
 - **Acesso:** só `INTERNAL-TOKEN`; sem ele, `403 RNV000002`.
-- **Corpo opcional** (JSON Schema na porta): `{"as_of": "<ISO 8601 com fuso>"}`; sem campo extra. `as_of` inválido → `400 RNV000001`.
+- **Corpo opcional** (JSON Schema na porta): `{"as_of": "<ISO 8601 com fuso>"}`; sem campo extra. `as_of` inválido → `400 RNV000009`; campo extra → `400 RNV000008`.
 - **Resposta `200`:** `{"as_of": "<instante usado>", "settled": [payout_key], "failed": [payout_key], "pending": [payout_key]}`.
   - `settled`: payouts levados a `settled` neste run.
   - `failed`: payouts levados a `failed` neste run (a reversal já está no Banco).
@@ -341,13 +351,13 @@ O mock interbancário que o reconcile chama (`POST /interbank/transfers` no `ext
   - Filtros e cursor se combinam (`status` + `company_key` + `cursor`).
 - **Resposta `200`:** `{"data": [PaymentDTO...], "limit": n, "cursor": "<cursor opaco>" | null, "is_last_page": bool}`, com o mesmo `PaymentDTO` de `GET /payments` (`payment_key`, `company_key`, `account_key`, `transaction_key`, `method`, `status`, `amount_minor`, `fee_bps`, `release_at`). Sem filtro, lista payments de qualquer cliente; `company_key` sem payments (ou inexistente) devolve `data: []`, `cursor: null`, `is_last_page: true`.
 - **Ordem e cursor:** mesmos de `GET /payments` (mais novo primeiro, keyset por `id` interno, cursor assinado com `CURSOR_SECRET`).
-- **Erros:** `400 RNV000001` (`limit` inválido, `status` fora do enumerador, `company_key` malformado, `cursor` vazio/adulterado/inventado/malformado, parâmetro desconhecido), `401 RNV000003`, `403 RNV001027`.
+- **Erros:** `400 RNV000009` (`limit` inválido, `status` fora do enumerador, `company_key` malformado), `400 RNV000011` (`cursor` vazio/adulterado/inventado/malformado), `400 RNV000008` (parâmetro desconhecido), `401 RNV000003`, `403 RNV001027`.
 
 ---
 
 ## Sugestões incorporadas (refino da v7)
 
-- `POST /accounts/{account_key}/close` só encerra com **saldo zero e nada em trânsito** (`422 RNV001035` caso contrário; `503 RNV000006` se o Transferências estiver fora).
+- `POST /accounts/{account_key}/close` só encerra com **saldo zero e nada em trânsito** (`422 RNV001035` caso contrário; `503 RNV001036` se o Transferências estiver fora).
 - `GET /admin/internal-accounts` para auditar o livro: devolve os totais (`reserves_minor`, `in_transit_minor`, `revenue_minor`, `clients_total_minor`) e `equation_ok`, não a lista das contas.
 - `GET /payouts/{payout_key}` para o lojista acompanhar o saque.
 - Novos códigos: `RNV001030` (empresa sem conta aberta), `RNV001031` (conta não active, só escrita),

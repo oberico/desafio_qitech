@@ -4,15 +4,15 @@ import pytest
 
 
 INVALID_PARAMS = {
-    "zero_limit": {"limit": 0},
-    "limit_above_max": {"limit": 101},
-    "text_limit": {"limit": "abc"},
-    "invented_cursor": {"cursor": "not-a-cursor"},
-    "from_without_timezone": {"from": "2026-10-01T00:00:00"},
-    "from_not_a_date": {"from": "yesterday"},
-    "to_without_timezone": {"to": "2026-10-31T23:59:59"},
-    "from_after_to": {"from": "2026-10-31T00:00:00-03:00", "to": "2026-10-01T00:00:00-03:00"},
-    "unknown_param": {"offset": 1},
+    "zero_limit": ({"limit": 0}, "RNV000009"),
+    "limit_above_max": ({"limit": 101}, "RNV000009"),
+    "text_limit": ({"limit": "abc"}, "RNV000009"),
+    "invented_cursor": ({"cursor": "not-a-cursor"}, "RNV000011"),
+    "from_without_timezone": ({"from": "2026-10-01T00:00:00"}, "RNV000009"),
+    "from_not_a_date": ({"from": "yesterday"}, "RNV000009"),
+    "to_without_timezone": ({"to": "2026-10-31T23:59:59"}, "RNV000009"),
+    "from_after_to": ({"from": "2026-10-31T00:00:00-03:00", "to": "2026-10-01T00:00:00-03:00"}, "RNV000010"),
+    "unknown_param": ({"offset": 1}, "RNV000008"),
 }
 
 
@@ -66,12 +66,19 @@ class TestAccountStatementPagination:
         assert status == 200
         assert response["data"] == []
 
-    @pytest.mark.parametrize("params", INVALID_PARAMS.values(), ids=INVALID_PARAMS.keys())
-    def test_refuses_invalid_pagination(self, accounts, active_account, client_token, params):
+    @pytest.mark.parametrize("params, code", INVALID_PARAMS.values(), ids=INVALID_PARAMS.keys())
+    def test_refuses_invalid_pagination(self, accounts, active_account, client_token, params, code):
         status, response = accounts.get_statement(active_account, client_token, params=params)
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == code
+
+    def test_unknown_parameter_error_points_to_the_query(self, accounts, active_account, client_token):
+        status, response = accounts.get_statement(active_account, client_token, params={"offset": 1})
+
+        assert status == 400
+        assert "query: " in response["description"]
+        assert "body" not in response["description"]
 
     def test_refuses_tampered_cursor(self, accounts, active_account, client_token, credit_account):
         credit_account(active_account, 1000)
@@ -83,4 +90,4 @@ class TestAccountStatementPagination:
         status, response = accounts.get_statement(active_account, client_token, params={"limit": 1, "cursor": tampered})
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000011"

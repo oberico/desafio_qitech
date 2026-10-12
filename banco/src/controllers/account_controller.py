@@ -14,7 +14,8 @@ from errors import (
     AccountNotFound,
     CompanyAlreadyHasAccount,
     CompanyNotFound,
-    InvalidSchema,
+    InvalidFormat,
+    ValueOutOfRange,
 )
 from models import Account, AccountClass, AccountStatus
 from repositories import AccountRepository, CompanyRepository, LedgerRepository
@@ -83,13 +84,13 @@ class AccountController(BaseController):
         return AccountBalanceDTO.obj_to_dict(account, self.ledger_repository.balance_of(account.id))
 
     def get_statement(self, account_key: str, client_id: int, params: dict) -> dict:
-        validate_json(params, GET_ACCOUNT_STATEMENT_SCHEMA)
+        validate_json(params, GET_ACCOUNT_STATEMENT_SCHEMA, root="query")
         limit = int(params.get("limit", DEFAULT_STATEMENT_LIMIT))
         before_entry_id = decode_cursor(params["cursor"]) if "cursor" in params else None
         created_from = self._parse_datetime(params, "from")
         created_to = self._parse_datetime(params, "to")
         if created_from and created_to and created_from > created_to:
-            raise InvalidSchema("from: must not be after to")
+            raise ValueOutOfRange("from", "from: must not be after to", "não pode ser depois de to")
 
         account = self.account_repository.get_by_key_and_client(account_key, client_id)
         if account is None:
@@ -107,14 +108,14 @@ class AccountController(BaseController):
         try:
             return datetime.fromisoformat(params[field])
         except ValueError:
-            raise InvalidSchema(f"{field}: invalid date")
+            raise InvalidFormat(field, f"{field}: invalid date", "esperado data e hora ISO 8601 com fuso")
 
     def close(self, account_key: str, client_id: int) -> dict:
         account = self.account_repository.lock_by_key_and_client(account_key, client_id)
         if account is None:
             raise AccountNotFound(account_key)
         if account.status.enumerator != AccountStatus.ACTIVE:
-            raise AccountNotActive()
+            raise AccountNotActive(account.status.enumerator)
         if self.ledger_repository.balance_of(account.id) != 0:
             raise AccountHasFundsInFlight()
 
@@ -133,7 +134,7 @@ class AccountController(BaseController):
         if account is None:
             raise AccountNotFound(account_key)
         if account.status.enumerator != AccountStatus.ACTIVE:
-            raise AccountNotActive()
+            raise AccountNotActive(account.status.enumerator)
 
         self.account_repository.change_status(account, self.account_repository.get_status(AccountStatus.BLOCKED))
 

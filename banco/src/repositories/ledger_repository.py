@@ -27,14 +27,16 @@ class LedgerRepository:
     def lock_transaction(self, transaction_id: int) -> None:
         self.session.query(Transaction.id).filter(Transaction.id == transaction_id).with_for_update().one()
 
-    def is_consumed(self, transaction_id: int) -> bool:
-        consumer = self.session.query(Transaction.id).filter(
+    def consumption_of(self, transaction_id: int) -> str:
+        consumer = self.session.query(Transaction.reverses_transaction_id).filter(
             or_(
                 Transaction.settles_transaction_id == transaction_id,
                 Transaction.reverses_transaction_id == transaction_id,
             )
-        )
-        return consumer.first() is not None
+        ).first()
+        if consumer is None:
+            return None
+        return "reversed" if consumer.reverses_transaction_id == transaction_id else "settled"
 
     def lock_account(self, account_id: int) -> None:
         self.session.query(Account.id).filter(Account.id == account_id).with_for_update().one()

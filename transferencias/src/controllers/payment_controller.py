@@ -43,7 +43,7 @@ class PaymentController(BaseController):
         account_key = self._authorized_account_key(payload["company_key"], companies)
 
         if not 0 < payload["amount_minor"] <= MAX_AMOUNT_MINOR:
-            raise InvalidAmount(payload["amount_minor"])
+            raise InvalidAmount(payload["amount_minor"], MAX_AMOUNT_MINOR)
 
         method = self.payment_repository.get_method(payload["method"])
         status = self.payment_repository.get_status(PaymentStatus.HELD)
@@ -83,7 +83,7 @@ class PaymentController(BaseController):
         return PaymentDTO.obj_to_dict(payment)
 
     def list_page(self, query: dict, client_key: str) -> dict:
-        validate_json(query, GET_PAYMENTS_SCHEMA)
+        validate_json(query, GET_PAYMENTS_SCHEMA, root="query")
         size = page_size(query)
         before_id = decode_cursor(query["cursor"]) if "cursor" in query else None
 

@@ -133,7 +133,7 @@ Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfec
 
 ### Paginação das rotas admin: cursor opaco assinado
 
-- `GET /admin/clients`, `/admin/companies` e `/admin/accounts` paginam por **cursor opaco assinado** (HMAC-SHA256 com `CURSOR_SECRET`), o mesmo padrão do extrato (`utils/cursor.py`). O cursor nunca é uma chave pública; cursor adulterado, inventado ou vazio devolve `400 RNV000001`.
+- `GET /admin/clients`, `/admin/companies` e `/admin/accounts` paginam por **cursor opaco assinado** (HMAC-SHA256 com `CURSOR_SECRET`), o mesmo padrão do extrato (`utils/cursor.py`). O cursor nunca é uma chave pública; cursor adulterado, inventado ou vazio devolve `400 RNV000011`.
 - O envelope é `{data, limit, cursor, is_last_page}`; `cursor` é `null` na última página.
 - Trocar `CURSOR_SECRET` invalida os cursores em circulação (aceitável: o cliente recomeça a listagem).
 
@@ -162,7 +162,7 @@ Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfec
 
 - **Decisão consciente (opção B, tomada pelo usuário):** `POST /accounts/{key}/close` só encerra com saldo derivado zero **e** nada em voo no Transferências (payments `held` e payouts `pending` da conta). Recusa → `422 RNV001035`. A consulta de "em voo" é `GET /internal/accounts/{account_key}/in-flight` (`INTERNAL-TOKEN`), que devolve `{"held_payments": n, "pending_payouts": n}`. É a **única** chamada Banco → Transferências; todas as outras vão no sentido contrário.
 - **Ordem no controller:** trava a linha da `account` (`FOR UPDATE`, READ COMMITTED) → status `active` (`409 RNV001009`) → saldo (lido depois do lock) → consulta in-flight → muda o status → commit. O lock fica retido durante a chamada HTTP; débitos concorrentes na mesma conta esperam e, ao entrar, enxergam a conta `closed`.
-- **Fail-closed:** Transferências fora, lento (`TRANSFERENCIAS_TIMEOUT_SECONDS`, padrão 5), resposta não-200 ou corpo fora do contrato → `503 RNV000006`, nada muda e a conta continua `active`. Nunca fecha na dúvida. O código `RNV000006` foi reaproveitado do "Service Busy" (decisão do usuário); o texto do catálogo cobre os dois casos.
+- **Fail-closed:** Transferências fora, lento (`TRANSFERENCIAS_TIMEOUT_SECONDS`, padrão 5), resposta não-200 ou corpo fora do contrato → `503 RNV001036`, nada muda e a conta continua `active`. Nunca fecha na dúvida. Até 2026-10-12 esse caso reaproveitava o `RNV000006` ("Service Busy"); a decisão mudou e ele ganhou código próprio, espelho do `RNV001017`, deixando o `RNV000006` só para pool esgotado.
 - **Riscos aceitos:**
   - **Acoplamento circular de disponibilidade:** o Transferências já depende do Banco (`/auth/me`, ledger); agora o `close` do Banco depende do Transferências. Sem Transferências, ninguém encerra conta (o resto do Banco segue de pé). Não há dependência circular no startup (`banco-api` não tem `depends_on` do Transferências).
   - **Lock durante HTTP:** até `TRANSFERENCIAS_TIMEOUT_SECONDS` segundos com a linha da conta travada e uma conexão do Banco presa; débitos da mesma conta esperam. Escopo limitado a uma conta que o titular está encerrando.
@@ -173,7 +173,7 @@ Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfec
 
 ### (i) Padrão de paginação: cursor opaco assinado
 
-- **Padrão do projeto (decisão do usuário):** paginação por **cursor opaco assinado** (keyset por `id` interno, `id < before_id`). O cursor é `base64url("<id>.<HMAC-SHA256 hex>")` com o segredo `CURSOR_SECRET`; o id interno não vai em claro nem é forjável. Envelope `{"data": [...], "limit": n, "cursor": <opaco ou null>, "is_last_page": bool}`; `limit` de 1 a 100. Cursor adulterado, inventado ou malformado → `400 RNV000001`. Origem: extrato da Victoria (#18, `banco/src/utils/cursor.py`); no Transferências a cópia isolada é `src/utils/cursor.py` e a primeira rota é `GET /payments`.
+- **Padrão do projeto (decisão do usuário):** paginação por **cursor opaco assinado** (keyset por `id` interno, `id < before_id`). O cursor é `base64url("<id>.<HMAC-SHA256 hex>")` com o segredo `CURSOR_SECRET`; o id interno não vai em claro nem é forjável. Envelope `{"data": [...], "limit": n, "cursor": <opaco ou null>, "is_last_page": bool}`; `limit` de 1 a 100. Cursor adulterado, inventado ou malformado → `400 RNV000011`. Origem: extrato da Victoria (#18, `banco/src/utils/cursor.py`); no Transferências a cópia isolada é `src/utils/cursor.py` e a primeira rota é `GET /payments`.
 - **Por que cursor:** o offset repete ou pula linha quando entra item novo entre duas páginas; o keyset não escorrega.
 - **A alinhar:** as listagens admin da Natalia (#21) usam a **chave pública** como cursor e devem migrar para o cursor opaco assinado.
 

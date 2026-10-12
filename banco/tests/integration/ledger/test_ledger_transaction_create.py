@@ -16,14 +16,14 @@ class TestLedgerTransactionCreate:
     def test_refuses_empty_body(self, ledger):
         status, response = ledger.post_transaction({}, RandomGenerator.uuid())
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000007"
 
     def test_refuses_missing_idempotency_key(self, api, internal_token):
         payload = PayloadGenerator.create_ledger_transaction_payload()
         headers = {"INTERNAL-TOKEN": internal_token}
         status, response = api.post("/ledger/transactions", body=payload, headers=headers)
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000012"
 
     def test_creates_transaction(self, ledger):
         payload = PayloadGenerator.create_ledger_transaction_payload()
@@ -82,7 +82,7 @@ class TestLedgerTransactionCreate:
         )
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000009"
 
     def test_refuses_inactive_account(self, ledger, accounts, open_account, client_token):
         account_key = open_account(client_token)
@@ -198,7 +198,7 @@ class TestLedgerTransactionCreate:
         payload = PayloadGenerator.create_ledger_transaction_payload(type="banana")
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000009"
 
     def test_refuses_zero_amount(self, ledger):
         payload = PayloadGenerator.create_ledger_transaction_payload(
@@ -209,7 +209,7 @@ class TestLedgerTransactionCreate:
         )
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000010"
 
     def test_refuses_negative_amount(self, ledger):
         payload = PayloadGenerator.create_ledger_transaction_payload(
@@ -220,28 +220,29 @@ class TestLedgerTransactionCreate:
         )
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000010"
 
     @pytest.mark.parametrize(
-        "type, references",
+        "type, references, code",
         [
-            ("settlement", {}),
-            ("settlement", {"reverses_transaction_key": RandomGenerator.uuid()}),
+            ("settlement", {}, "RNV000007"),
+            ("settlement", {"reverses_transaction_key": RandomGenerator.uuid()}, "RNV000007"),
             (
                 "settlement",
                 {
                     "settles_transaction_key": RandomGenerator.uuid(),
                     "reverses_transaction_key": RandomGenerator.uuid(),
                 },
+                "RNV000008",
             ),
-            ("refund", {}),
-            ("refund", {"settles_transaction_key": RandomGenerator.uuid()}),
-            ("reversal", {}),
-            ("reversal", {"settles_transaction_key": RandomGenerator.uuid()}),
-            ("receipt", {"settles_transaction_key": RandomGenerator.uuid()}),
-            ("receipt", {"reverses_transaction_key": RandomGenerator.uuid()}),
-            ("payout", {"settles_transaction_key": RandomGenerator.uuid()}),
-            ("payout", {"reverses_transaction_key": RandomGenerator.uuid()}),
+            ("refund", {}, "RNV000007"),
+            ("refund", {"settles_transaction_key": RandomGenerator.uuid()}, "RNV000007"),
+            ("reversal", {}, "RNV000007"),
+            ("reversal", {"settles_transaction_key": RandomGenerator.uuid()}, "RNV000007"),
+            ("receipt", {"settles_transaction_key": RandomGenerator.uuid()}, "RNV000008"),
+            ("receipt", {"reverses_transaction_key": RandomGenerator.uuid()}, "RNV000008"),
+            ("payout", {"settles_transaction_key": RandomGenerator.uuid()}, "RNV000008"),
+            ("payout", {"reverses_transaction_key": RandomGenerator.uuid()}, "RNV000008"),
         ],
         ids=[
             "settlement_without_reference",
@@ -257,11 +258,11 @@ class TestLedgerTransactionCreate:
             "payout_with_reverses",
         ],
     )
-    def test_refuses_references_that_do_not_match_type(self, ledger, type, references):
+    def test_refuses_references_that_do_not_match_type(self, ledger, type, references, code):
         payload = PayloadGenerator.create_ledger_transaction_payload(type=type, **references)
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == code
 
     @pytest.mark.parametrize(
         "type, target_type",
@@ -301,7 +302,8 @@ class TestLedgerTransactionCreate:
         )
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000008"
+        assert response["translation"] == "Campo não permitido: entries.0.credit_minor. Não pode vir junto com debit_minor."
 
     def test_concurrent_replays_create_one_transaction(self, ledger):
         payload = PayloadGenerator.create_ledger_transaction_payload()
@@ -435,4 +437,4 @@ class TestLedgerTransactionCreate:
         )
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000009"

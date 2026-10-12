@@ -21,15 +21,15 @@ class AdminController(BaseController):
         self.ledger_repository = LedgerRepository(session)
 
     def list_clients(self, query: dict) -> dict:
-        validate_json(query, GET_ADMIN_PAGE_SCHEMA)
+        validate_json(query, GET_ADMIN_PAGE_SCHEMA, root="query")
         return self._list_page(query, self.client_repository, AdminClientDTO.obj_to_dict)
 
     def list_companies(self, query: dict) -> dict:
-        validate_json(query, GET_ADMIN_PAGE_SCHEMA)
+        validate_json(query, GET_ADMIN_PAGE_SCHEMA, root="query")
         return self._list_page(query, self.company_repository, CompanyDTO.obj_to_dict)
 
     def list_accounts(self, query: dict) -> dict:
-        validate_json(query, GET_ADMIN_ACCOUNTS_SCHEMA)
+        validate_json(query, GET_ADMIN_ACCOUNTS_SCHEMA, root="query")
         return self._list_page(
             query,
             self.account_repository,

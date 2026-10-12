@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from connectors import BankConnector
 from constants import SCHEMAS_DIR
 from controllers.base_controller import BaseController
-from errors import BankUnavailable, InvalidSchema
+from errors import BankUnavailable, InvalidFormat
 from models import Payment, PaymentStatus, PaymentStatusEvent
 from repositories import PaymentRepository, PaymentTransitionRepository
 from utils.fee import split_fee
@@ -91,4 +91,4 @@ class SettlementController(BaseController):
         try:
             return datetime.fromisoformat(payload["as_of"])
         except ValueError as error:
-            raise InvalidSchema("as_of: not a valid ISO 8601 instant") from error
+            raise InvalidFormat("as_of", "as_of: not a valid ISO 8601 instant", "esperado data e hora ISO 8601 com fuso") from error

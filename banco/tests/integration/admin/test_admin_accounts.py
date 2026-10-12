@@ -89,22 +89,28 @@ class TestAdminAccounts:
         assert seen == list(reversed(created_keys))
 
     @pytest.mark.parametrize(
-        "params",
+        "params, code",
         [
-            {"status": "banana"},
-            {"status": ""},
-            {"limit": "0"},
-            {"cursor": RandomGenerator.uuid()},
-            {"cursor": "x"},
-            {"cursor": ""},
-            {"pagina": "2"},
+            ({"status": "banana"}, "RNV000009"),
+            ({"status": ""}, "RNV000009"),
+            ({"limit": "0"}, "RNV000009"),
+            ({"cursor": RandomGenerator.uuid()}, "RNV000011"),
+            ({"cursor": "x"}, "RNV000011"),
+            ({"cursor": ""}, "RNV000011"),
+            ({"pagina": "2"}, "RNV000008"),
         ],
         ids=["unknown_status", "empty_status", "limit_zero", "public_key_cursor", "malformed_cursor", "empty_cursor", "unknown_parameter"],
     )
-    def test_refuses_invalid_query(self, admin, admin_token, params):
+    def test_refuses_invalid_query(self, admin, admin_token, params, code):
         status, response = admin.get(ROUTE, admin_token, params)
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == code
+
+    def test_unknown_parameter_error_points_to_the_query(self, admin, admin_token):
+        status, response = admin.get(ROUTE, admin_token, {"order": "asc"})
+        assert status == 400
+        assert "query: " in response["description"]
+        assert "body" not in response["description"]
 
     @staticmethod
     def _account_in_status(accounts, open_account, client_token, internal_token, status_filter) -> str:

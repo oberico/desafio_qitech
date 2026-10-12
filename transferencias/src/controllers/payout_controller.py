@@ -13,9 +13,9 @@ from errors import (
     BankUnavailable,
     IdempotencyKeyReused,
     InvalidAmount,
-    InvalidSchema,
     NotFoundCompany,
     NotFoundPayout,
+    ValueOutOfRange,
 )
 from models import Payout, PayoutStatus, PayoutStatusEvent
 from repositories import PayoutRepository
@@ -41,7 +41,7 @@ class PayoutController(BaseController):
         company = self._authorized_company(payload["account_key"], companies)
 
         if not 0 < payload["amount_minor"] <= MAX_AMOUNT_MINOR:
-            raise InvalidAmount(payload["amount_minor"])
+            raise InvalidAmount(payload["amount_minor"], MAX_AMOUNT_MINOR)
 
         purpose = self.payout_repository.get_purpose(payload["purpose"])
         status = self.payout_repository.get_status(PayoutStatus.PENDING)
@@ -111,7 +111,11 @@ class PayoutController(BaseController):
     def _ensure_destination_size(destination: dict) -> None:
         serialized = json.dumps(destination, separators=(",", ":"), ensure_ascii=False)
         if len(serialized.encode("utf-8")) > MAX_DESTINATION_BYTES:
-            raise InvalidSchema(f"destination: exceeds {MAX_DESTINATION_BYTES} bytes when serialized")
+            raise ValueOutOfRange(
+                "destination",
+                f"destination: exceeds {MAX_DESTINATION_BYTES} bytes when serialized",
+                f"deve ter no máximo {MAX_DESTINATION_BYTES} bytes",
+            )
 
     @staticmethod
     def _authorized_company(account_key: str, companies: list) -> dict:
