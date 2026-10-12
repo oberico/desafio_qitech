@@ -49,6 +49,20 @@ class PaymentRepository:
             query = query.filter(Payment.id < before_id)
         return query.order_by(Payment.id.desc()).limit(limit).all()
 
+    def list_all_newest_first(
+        self, limit: int, before_id: int = None, status: str = None, company_key: str = None
+    ) -> list:
+        query = self.session.query(Payment)
+        if company_key is not None:
+            query = query.filter(Payment.company_key == company_key)
+        if status is not None:
+            query = query.join(PaymentStatus, PaymentStatus.id == Payment.status_id).filter(
+                PaymentStatus.enumerator == status
+            )
+        if before_id is not None:
+            query = query.filter(Payment.id < before_id)
+        return query.order_by(Payment.id.desc()).limit(limit).all()
+
     def get_locked_by_key(self, payment_key: str, client_key: str) -> Payment:
         return (
             self.session.query(Payment)

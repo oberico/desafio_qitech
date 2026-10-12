@@ -94,7 +94,7 @@ insuficiente, repassado do Banco) e `RNV001017` (Banco indisponível). `RNV00103
 
 | Código | HTTP | Mensagem |
 |---|---|---|
-| RNV001027 | 403 | Token sem permissão de administrador |
+| RNV001027 | 403 | Token sem permissão de administrador (Banco e Transferências: rotas `/admin/*` com token de cliente) |
 
 ---
 

@@ -39,7 +39,7 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 | 1 | POST | `/companies/{company_key}/accounts` | cliente | Abre conta da empresa; valida birô; `409 RNV001022` se já tem conta. |
 | 1 | GET | `/accounts/{account_key}/balance` | cliente | Saldo derivado. **Leitura passa com conta blocked/closed.** |
 | 1 | GET | `/accounts/{account_key}/statement` | cliente | Extrato (entries). **Leitura passa com conta blocked/closed.** |
-| 2 | GET | `/accounts/{account_key}` | cliente | Dados da conta; IDOR → `404 RNV001021`. |
+| 2 | GET | `/accounts/{account_key}` | cliente | Dados da conta: `account_key`, `company_key`, `status`, `currency` e `created_at` (ISO-8601 com fuso); IDOR → `404 RNV001021`. |
 | 2 | POST | `/accounts/{account_key}/close` | cliente | Encerra; `409 RNV001009` se a conta não está `active`; `422 RNV001035` se tem saldo ou valores em trânsito (payment `held`/payout `pending` no Transferências); `503 RNV000006` se o Transferências não responde (fail-closed). Ordem: lock da conta, status, saldo, consulta in-flight, muda status, commit. |
 
 ### Ledger
@@ -63,12 +63,50 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 
 ### Admin
 
-| Prioridade | Método | Rota | Acesso |
-|---|---|---|---|
-| 3 | GET | `/admin/clients` | admin |
-| 3 | GET | `/admin/companies` | admin |
-| 3 | GET | `/admin/accounts` | admin |
-| 3 | GET | `/admin/internal-accounts` | admin |
+| Prioridade | Método | Rota | Acesso | Justificativa |
+|---|---|---|---|---|
+| 3 | GET | `/admin/clients` | admin | Lista paginada de todos os clientes. |
+| 3 | GET | `/admin/companies` | admin | Lista paginada de todas as empresas. |
+| 3 | GET | `/admin/accounts` | admin | Lista paginada de todas as contas de empresa (filtro `status`). |
+| 3 | GET | `/admin/internal-accounts` | admin | Totais do livro e conferência da equação contábil. **Não** devolve a lista das contas internas (para isso existe `GET /internal/internal-accounts`, de serviço). |
+
+**Autenticação do admin (vale para todo `/admin/*`, nos dois serviços).**
+
+- Header `Authorization: Bearer <token>`. O token de admin vem da variável de ambiente `ADMIN_TOKEN` (não existe tabela de admin) e é comparado em tempo constante.
+- Token ausente, inválido ou revogado → `401 RNV000003`. O `INTERNAL-TOKEN` não substitui o token de admin (`401 RNV000003`).
+- Token de **cliente** válido → `403 RNV001027` (autenticado, mas sem permissão de administrador).
+- Rota `/admin/*` inexistente com token de admin → `404 RNV000004`.
+
+**Paginação (rotas de lista do admin).**
+
+- **Query** (JSON Schema, tudo opcional, parâmetro desconhecido recusado): `limit` (inteiro de `1` a `100`, padrão `20`) e `cursor` (string opaca não vazia devolvida na página anterior). `GET /admin/accounts` aceita também `status`: `created`, `active`, `rejected`, `blocked` ou `closed`. `GET /admin/clients` e `GET /admin/companies` não têm filtro.
+- **Resposta `200`:** `{"data": [item...], "limit": n, "cursor": "<cursor opaco>" | null, "is_last_page": bool}`. `cursor` é `null` na última página; lista vazia devolve `data: []` com `is_last_page: true`.
+- **Ordem:** do mais novo para o mais antigo (`id` interno decrescente), keyset sem `COUNT` (busca `limit + 1`). Cursor assinado (HMAC-SHA256 com `CURSOR_SECRET`): adulterado, inventado ou malformado → `400 RNV000001`.
+- **Erros comuns:** `400 RNV000001` (`limit` fora de 1..100 ou não inteiro, `status` fora do enumerador, `cursor` inválido, parâmetro desconhecido), `401 RNV000003`, `403 RNV001027`.
+
+**Item de `GET /admin/clients`:** `{"client_key", "name", "created_at"}`. Nunca expõe CPF, e-mail, senha ou token.
+
+**Item de `GET /admin/companies`:** `{"company_key", "cnpj", "legal_name", "account_key", "account_status"}`. `account_key` e `account_status` são `null` quando a empresa ainda não tem conta.
+
+**Item de `GET /admin/accounts`:** `{"account_key", "company_key", "status", "currency", "created_at"}` (mesmo DTO de `GET /accounts/{account_key}`). Só contas de empresa; as contas internas ficam de fora.
+
+**`GET /admin/internal-accounts` — contrato.**
+
+- Sem query. Resposta `200` (valores em centavos, inteiros, saldo natural de cada conta derivado das `entry`):
+
+```json
+{
+  "reserves_minor": 0,
+  "in_transit_minor": 0,
+  "revenue_minor": 0,
+  "clients_total_minor": 0,
+  "equation_ok": true
+}
+```
+
+- `reserves_minor`: saldo da conta `reserves` (ativo, o dinheiro que o banco tem). `in_transit_minor`: saldo de `in_transit` (passivo). `revenue_minor`: saldo de `revenue` (receita, as tarifas). `clients_total_minor`: soma dos saldos de todas as contas de empresa.
+- `equation_ok` é `true` quando `reserves_minor == in_transit_minor + clients_total_minor + revenue_minor`. Se vier `false`, o livro está inconsistente.
+- Erros: `401 RNV000003`, `403 RNV001027`. Não há `400` (sem parâmetros).
 
 ---
 
@@ -274,16 +312,29 @@ O mock interbancário que o reconcile chama (`POST /interbank/transfers` no `ext
 
 ### Admin
 
-| Prioridade | Método | Rota | Acesso |
-|---|---|---|---|
-| 3 | GET | `/admin/payments` | admin |
+| Prioridade | Método | Rota | Acesso | Justificativa |
+|---|---|---|---|---|
+| 3 | GET | `/admin/payments` | admin | Lista paginada dos payments de **todos** os clientes e empresas, com filtros. |
+
+**`GET /admin/payments` — contrato completo.**
+
+- **Acesso:** admin. Autenticação idêntica à do Banco (ver "Autenticação do admin" na seção Banco): `ADMIN_TOKEN` por env; ausente/inválido/`INTERNAL-TOKEN` → `401 RNV000003`; token de cliente válido (confirmado no Banco via `GET /auth/me`) → `403 RNV001027`. O middleware de cliente ignora `/admin/`.
+- **Query (JSON Schema `get_admin_payments.json`, tudo opcional, parâmetro desconhecido recusado):**
+  - `limit`: inteiro de `1` a `100` (padrão `20`).
+  - `cursor`: string opaca devolvida na página anterior (não vazia).
+  - `status`: `held`, `settled` ou `refunded`.
+  - `company_key`: UUID (36 caracteres hexadecimais e hífens); filtra por empresa.
+  - Filtros e cursor se combinam (`status` + `company_key` + `cursor`).
+- **Resposta `200`:** `{"data": [PaymentDTO...], "limit": n, "cursor": "<cursor opaco>" | null, "is_last_page": bool}`, com o mesmo `PaymentDTO` de `GET /payments` (`payment_key`, `company_key`, `account_key`, `transaction_key`, `method`, `status`, `amount_minor`, `fee_bps`, `release_at`). Sem filtro, lista payments de qualquer cliente; `company_key` sem payments (ou inexistente) devolve `data: []`, `cursor: null`, `is_last_page: true`.
+- **Ordem e cursor:** mesmos de `GET /payments` (mais novo primeiro, keyset por `id` interno, cursor assinado com `CURSOR_SECRET`).
+- **Erros:** `400 RNV000001` (`limit` inválido, `status` fora do enumerador, `company_key` malformado, `cursor` vazio/adulterado/inventado/malformado, parâmetro desconhecido), `401 RNV000003`, `403 RNV001027`.
 
 ---
 
 ## Sugestões incorporadas (refino da v7)
 
 - `POST /accounts/{account_key}/close` só encerra com **saldo zero e nada em trânsito** (`422 RNV001035` caso contrário; `503 RNV000006` se o Transferências estiver fora).
-- `GET /admin/internal-accounts` para auditar as três contas internas (reserves / in_transit / revenue).
+- `GET /admin/internal-accounts` para auditar o livro: devolve os totais (`reserves_minor`, `in_transit_minor`, `revenue_minor`, `clients_total_minor`) e `equation_ok`, não a lista das contas.
 - `GET /payouts/{payout_key}` para o lojista acompanhar o saque.
 - Novos códigos: `RNV001030` (empresa sem conta aberta), `RNV001031` (conta não active, só escrita),
   `RNV001032` (saque inexistente ou de outro lojista).

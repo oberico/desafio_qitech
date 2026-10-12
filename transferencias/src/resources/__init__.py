@@ -5,3 +5,4 @@ from resources.payment_method import PaymentMethodResource
 from resources.payout import PayoutResource
 from resources.in_flight import InFlightResource
 from resources.payout_reconcile import PayoutReconcileResource
+from resources.admin import AdminResource

@@ -3,7 +3,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.routing import Match
 
 from connectors import BankConnector
-from constants import BYPASS_ENDPOINTS, INTERNAL_ROUTE_PREFIX
+from constants import ADMIN_ROUTE_PREFIX, BYPASS_ENDPOINTS, INTERNAL_ROUTE_PREFIX
 from errors import InvalidClientToken, QIException
 from errors.handlers import qi_exception_to_response
 
@@ -18,7 +18,8 @@ def bearer_token(request: Request) -> str:
 
 
 def requires_client_token(application: FastAPI, request: Request) -> bool:
-    if request.url.path.startswith(INTERNAL_ROUTE_PREFIX) or request.url.path in BYPASS_ENDPOINTS:
+    path = request.url.path
+    if path.startswith((INTERNAL_ROUTE_PREFIX, ADMIN_ROUTE_PREFIX)) or path in BYPASS_ENDPOINTS:
         return False
     return any(route.matches(request.scope)[0] == Match.FULL for route in application.router.routes)
 

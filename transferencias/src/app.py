@@ -8,13 +8,14 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from errors import InvalidSchema, MethodNotAllowed, NotFoundRoute, QIException, ServiceBusy
 from errors.handlers import qi_exception_to_response
 from middlewares import (
+    register_admin_auth_middleware,
     register_client_auth_middleware,
     register_internal_token_middleware,
     register_request_context_middleware,
     register_request_logger_middleware,
     register_session_manager_middleware,
 )
-from resources import HealthCheckResource, InFlightResource, PaymentMethodResource, PaymentResource, PayoutReconcileResource, PayoutResource, SettlementResource
+from resources import AdminResource, HealthCheckResource, InFlightResource, PaymentMethodResource, PaymentResource, PayoutReconcileResource, PayoutResource, SettlementResource
 from utils.logger import setup_logging
 
 setup_logging()
@@ -52,11 +53,13 @@ application.add_exception_handler(RequestValidationError, handle_request_validat
 application.add_exception_handler(ConnectionPoolTimeout, handle_pool_timeout)
 
 register_client_auth_middleware(application)
+register_admin_auth_middleware(application)
 register_session_manager_middleware(application)
 register_internal_token_middleware(application)
 register_request_logger_middleware(application)
 register_request_context_middleware(application)
 
+admin_resource = AdminResource()
 health_check_resource = HealthCheckResource()
 in_flight_resource = InFlightResource()
 payment_resource = PaymentResource()
@@ -77,3 +80,4 @@ application.add_api_route("/internal/accounts/{account_key}/in-flight", in_fligh
 application.add_api_route("/internal/payouts/reconcile", payout_reconcile_resource.on_post, methods=["POST"])
 application.add_api_route("/internal/settlements", settlement_resource.on_post, methods=["POST"])
 application.add_api_route("/internal/payment-methods/{method}", payment_method_resource.on_put, methods=["PUT"])
+application.add_api_route("/admin/payments", admin_resource.on_get_payments, methods=["GET"])
