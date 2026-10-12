@@ -83,7 +83,7 @@ class PaymentController(BaseController):
         return PaymentDTO.obj_to_dict(payment)
 
     def list_page(self, query: dict, client_key: str) -> dict:
-        validate_json(query, GET_PAYMENTS_SCHEMA)
+        validate_json(query, GET_PAYMENTS_SCHEMA, root="query")
         size = page_size(query)
         before_id = decode_cursor(query["cursor"]) if "cursor" in query else None
 

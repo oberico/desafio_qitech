@@ -10,13 +10,13 @@ STRICT_INTEGER_CHECKER = Draft7Validator.TYPE_CHECKER.redefine(
 StrictDraft7Validator = validators.extend(Draft7Validator, type_checker=STRICT_INTEGER_CHECKER)
 
 
-def validate_json(payload: dict, schema_path: str) -> dict:
+def validate_json(payload: dict, schema_path: str, root: str = "body") -> dict:
     with open(schema_path, encoding="utf-8") as schema_file:
         schema = json.load(schema_file)
 
     error = next(iter(StrictDraft7Validator(schema).iter_errors(payload)), None)
     if error is not None:
-        location = ".".join(str(part) for part in error.absolute_path) or "body"
+        location = ".".join(str(part) for part in error.absolute_path) or root
         raise InvalidSchema(f"{location}: {error.message}")
 
     return payload

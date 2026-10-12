@@ -164,6 +164,13 @@ class TestPaymentList:
         assert status == 400
         assert response["code"] == "RNV000001"
 
+    def test_unknown_parameter_error_points_to_the_query(self, merchant):
+        status, response = merchant.list_payments({"page": "2"})
+
+        assert status == 400
+        assert "query: " in response["description"]
+        assert "body" not in response["description"]
+
     def test_filters_by_held_status(self, merchant, create_payments):
         created = create_payments(merchant, 2)
         merchant.refund_payment(created[0])

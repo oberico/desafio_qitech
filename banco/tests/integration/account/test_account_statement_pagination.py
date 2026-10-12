@@ -73,6 +73,13 @@ class TestAccountStatementPagination:
         assert status == 400
         assert response["code"] == "RNV000001"
 
+    def test_unknown_parameter_error_points_to_the_query(self, accounts, active_account, client_token):
+        status, response = accounts.get_statement(active_account, client_token, params={"offset": 1})
+
+        assert status == 400
+        assert "query: " in response["description"]
+        assert "body" not in response["description"]
+
     def test_refuses_tampered_cursor(self, accounts, active_account, client_token, credit_account):
         credit_account(active_account, 1000)
         credit_account(active_account, 2000)

@@ -37,6 +37,12 @@ class TestPaymentMethodValidation:
         assert status == 400
         assert response["code"] == "RNV000001"
 
+    def test_unknown_method_error_points_to_the_method(self, payment_methods):
+        status, response = payment_methods.put_authorized("ted", VALID)
+        assert status == 400
+        assert "method: " in response["description"]
+        assert "body" not in response["description"]
+
     @pytest.mark.parametrize("fee_bps, window", [(0, 0), (10000, 8760)])
     def test_accepts_the_limits(self, changed_method, fee_bps, window):
         status, response = changed_method("card", fee_bps, window)

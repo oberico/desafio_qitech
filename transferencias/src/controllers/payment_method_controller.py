@@ -17,7 +17,7 @@ class PaymentMethodController(BaseController):
         self.payment_method_repository = PaymentMethodRepository(session)
 
     def change_terms(self, enumerator: str, payload: dict) -> tuple:
-        validate_json(enumerator, PAYMENT_METHOD_ENUMERATOR_SCHEMA)
+        validate_json(enumerator, PAYMENT_METHOD_ENUMERATOR_SCHEMA, root="method")
         validate_json(payload, PUT_PAYMENT_METHOD_SCHEMA)
 
         current = self._lock_latest(enumerator)
