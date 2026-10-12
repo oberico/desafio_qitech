@@ -1,15 +1,33 @@
-# Rotas — contrato da API (v7)
+# Rotas da API
 
-> **Contrato canônico de rotas.** Esta é a fonte da verdade do que cada endpoint recebe e
-> devolve. Antes de implementar qualquer rota, confira aqui. Em conflito com o código, este
-> documento vence e você me avisa. Alinhado com a RFC v7.2 e o catálogo de erros (`catalogo-de-erros.md`).
->
-> Acessos: **público** (bypass) · **cliente** (`Authorization`) · **admin** (`/admin/*`) ·
-> **serviço** (`INTERNAL-TOKEN`, rotas `/internal/*` e chamadas entre serviços).
->
-> Escritas exigem header `Idempotency-Key` (ausente ou fora do tamanho → `400 RNV000012`).
->
-> Erros de formato (`400`) têm um código por tipo: `RNV000001` corpo que não é objeto JSON, `RNV000007` campo obrigatório ausente, `RNV000008` campo ou parâmetro não permitido, `RNV000009` tipo ou formato inválido, `RNV000010` valor fora do limite, `RNV000011` cursor inválido, `RNV000012` `Idempotency-Key` ausente ou inválida. A `translation` cita o campo e o motivo. Detalhes em `catalogo-de-erros.md`.
+Contrato de todos os endpoints dos dois serviços do RNV: o que cada rota recebe, o que devolve, quem pode chamar e quais erros pode retornar. Os códigos de erro estão explicados no [Catálogo de erros](catalogo-de-erros.md).
+
+[← Voltar ao README](../README.md)
+
+## Sumário
+
+- [Como ler este documento](#como-ler-este-documento)
+- [Banco](#banco)
+  - [Cadastro e identidade](#cadastro-e-identidade) · [Conta](#conta) · [Ledger](#ledger)
+- [Transferências](#transferências)
+  - [Pagamento](#pagamento-venda) · [Payout](#payout-saída-de-dinheiro) · [Jobs internos](#internal-jobs)
+
+## Como ler este documento
+
+Cada rota tem um tipo de **acesso**, que define como ela é autenticada:
+
+| Acesso | Como se autentica | Sem autenticação válida |
+|---|---|---|
+| **público** | nenhum header | — |
+| **cliente** | `Authorization: Bearer <token do cliente>` | `401 RNV000003` |
+| **admin** | `Authorization: Bearer <ADMIN_TOKEN>`, nas rotas `/admin/*` | `401 RNV000003`; token de cliente → `403 RNV001027` |
+| **serviço** | header `INTERNAL-TOKEN`, nas rotas `/internal/*` e nas chamadas entre serviços | `403 RNV000002` |
+
+> [!IMPORTANT]
+> Escritas exigem o header `Idempotency-Key`. Sem ele, a resposta é `400 RNV000001`.
+
+> [!NOTE]
+> Este documento é a fonte da verdade do contrato da API e está alinhado com a RFC v7.2 e com o [Catálogo de erros](catalogo-de-erros.md). Em conflito com o código, vale o que está aqui.
 
 ---
 
@@ -352,18 +370,3 @@ O mock interbancário que o reconcile chama (`POST /interbank/transfers` no `ext
 - **Resposta `200`:** `{"data": [PaymentDTO...], "limit": n, "cursor": "<cursor opaco>" | null, "is_last_page": bool}`, com o mesmo `PaymentDTO` de `GET /payments` (`payment_key`, `company_key`, `account_key`, `transaction_key`, `method`, `status`, `amount_minor`, `fee_bps`, `release_at`). Sem filtro, lista payments de qualquer cliente; `company_key` sem payments (ou inexistente) devolve `data: []`, `cursor: null`, `is_last_page: true`.
 - **Ordem e cursor:** mesmos de `GET /payments` (mais novo primeiro, keyset por `id` interno, cursor assinado com `CURSOR_SECRET`).
 - **Erros:** `400 RNV000009` (`limit` inválido, `status` fora do enumerador, `company_key` malformado), `400 RNV000011` (`cursor` vazio/adulterado/inventado/malformado), `400 RNV000008` (parâmetro desconhecido), `401 RNV000003`, `403 RNV001027`.
-
----
-
-## Sugestões incorporadas (refino da v7)
-
-- `POST /accounts/{account_key}/close` só encerra com **saldo zero e nada em trânsito** (`422 RNV001035` caso contrário; `503 RNV001036` se o Transferências estiver fora).
-- `GET /admin/internal-accounts` para auditar o livro: devolve os totais (`reserves_minor`, `in_transit_minor`, `revenue_minor`, `clients_total_minor`) e `equation_ok`, não a lista das contas.
-- `GET /payouts/{payout_key}` para o lojista acompanhar o saque.
-- Novos códigos: `RNV001030` (empresa sem conta aberta), `RNV001031` (conta não active, só escrita),
-  `RNV001032` (saque inexistente ou de outro lojista).
-- `as_of` opcional no corpo de `POST /internal/settlements` e `POST /internal/payouts/reconcile`: refino
-  em cima da RFC v7.2, que não menciona `as_of` (ela fala só em "o relógio" e "quando `release_at` vence").
-  Sem o campo, nada muda; existe para testar sem esperar a janela. Só com `INTERNAL-TOKEN`.
-  Em operação, o prazo definido nas tabelas (`release_window_hours` do `payment_method`) é o que prevalece.
-- `PUT /internal/payment-methods/{method}`: versiona taxa e janela (append-only); a RFC v7.2 trata `payment_method` como tabela com snapshot no `payment`, mas não cita a rota nem o versionamento.
