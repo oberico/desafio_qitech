@@ -61,10 +61,10 @@ Python 3.11 · FastAPI · SQLAlchemy · PostgreSQL · Docker Compose · pytest �
 
 As decisões e o raciocínio do projeto estão na RFC. No repositório:
 
-- [Rotas](internal_docs/rotas.md): o contrato de cada endpoint.
-- [Catálogo de erros](internal_docs/catalogo-de-erros.md): todos os códigos `RNV`.
-- [Mocks externos](internal_docs/mocks-externos.md): o contrato do simulador interbancário.
-- [Limites e evolução](internal_docs/limites-e-evolucao.md): o que o projeto não resolve hoje e como evoluiria.
+- [Rotas](docs/rotas.md): o contrato de cada endpoint.
+- [Catálogo de erros](docs/catalogo-de-erros.md): todos os códigos `RNV`.
+- [Mocks externos](docs/mocks-externos.md): o contrato do simulador interbancário.
+- [Limites e evolução](docs/limites-e-evolucao.md): o que o projeto não resolve hoje e como evoluiria.
 
 ## Time
 

@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-Instituição de pagamento com conta PJ e gateway de pagamento (agnóstico à forma). **Não oferecemos crédito** — só movimentamos dinheiro de terceiros, sem assumir risco de crédito nem exigir capital próprio. Desafio do Bootcamp QI Tech. Monorepo com **dois serviços de negócio**: `banco/` e `transferencias/`; mais `external-mocks/`, container à parte que simula sistemas externos (interbancário hoje, birô depois) — sem banco, sem auth, estado em memória, chamado só pelos conectores dos serviços de negócio. Contrato em `internal_docs/mocks-externos.md`.
+Instituição de pagamento com conta PJ e gateway de pagamento (agnóstico à forma). **Não oferecemos crédito** — só movimentamos dinheiro de terceiros, sem assumir risco de crédito nem exigir capital próprio. Desafio do Bootcamp QI Tech. Monorepo com **dois serviços de negócio**: `banco/` e `transferencias/`; mais `external-mocks/`, container à parte que simula sistemas externos (interbancário hoje, birô depois) — sem banco, sem auth, estado em memória, chamado só pelos conectores dos serviços de negócio. Contrato em `docs/mocks-externos.md`.
 
-Antes de codar, leia `internal_docs/rfc-rnv-v7.2.md` (a spec) e `internal_docs/analise-defesa-rfc.md` (o porquê de cada decisão) e `internal_docs/catalogo-de-erros.md` (o catálogo de erros). Em conflito, a RFC v7.2 vence e você me avisa. Em caso de dúvida me pergunte e me ajude a entender melhor as regras. Não faça suposições.
+Antes de codar, leia `internal_docs/rfc-rnv-v7.2.md` (a spec) e `internal_docs/analise-defesa-rfc.md` (o porquê de cada decisão) e `docs/catalogo-de-erros.md` (o catálogo de erros). Em conflito, a RFC v7.2 vence e você me avisa. Em caso de dúvida me pergunte e me ajude a entender melhor as regras. Não faça suposições.
 
 **Método: TDD.** Toda construção começa pelo teste — escreve, vê falhar (red), implementa o mínimo até passar (green), refatora com a rede verde. O teste é o contrato; nenhuma fatia começa sem ele. Passo a passo em `internal_docs/roadmap-construcao-api.md`.
 
@@ -20,7 +20,7 @@ Antes de codar, leia `internal_docs/rfc-rnv-v7.2.md` (a spec) e `internal_docs/a
 - **Sem comentários.** O código fala por si: nomes claros, funções pequenas.
 - **Tudo em inglês**, com os termos corretos de contabilidade e banco (`normal_balance`, `ledger`, `entry`, `asset`/`liability`/`revenue`).
 - **Camadas, direção só para dentro:** `resource → controller → repository → model`. Repository só faz query (devolve dado ou vazio); controller faz regra de negócio e dá o commit; resource fala HTTP e decide o status; nenhum `raise` no resource. **Não existe camada `service`** — não crie uma.
-- **Erros** no formato `{title, description, translation, code}`, código estável `RNV000xxx` (genérico) / `RNV001xxx` (negócio). Sem código duplicado. Leia `internal_docs/catalogo-de-erros.md` para ver os códigos de erro que já existem e use-os corretamente. Em caso de dúvida ou sugestão de novos códigos, me pergunte antes de criar.
+- **Erros** no formato `{title, description, translation, code}`, código estável `RNV000xxx` (genérico) / `RNV001xxx` (negócio). Sem código duplicado. Leia `docs/catalogo-de-erros.md` para ver os códigos de erro que já existem e use-os corretamente. Em caso de dúvida ou sugestão de novos códigos, me pergunte antes de criar.
 - **JSON Schema na porta** valida o formato do corpo antes de qualquer consulta (`400 RNV000001`). Pydantic não é usado para contrato de entrada.
 - **Enumeradores são tabelas de lookup** (`enumerator` UK + FK), nunca texto solto nem `ENUM` nativo. Valores em **minúsculo** (`pending`, `gateway`, `brl`, `d`/`c`); códigos de erro (`RNV000001`…) em maiúsculo.
 - **Datas com fuso:** toda coluna de data é `TIMESTAMPTZ` (no model, `DateTime(timezone=True)`).
@@ -40,7 +40,7 @@ Antes de codar, leia `internal_docs/rfc-rnv-v7.2.md` (a spec) e `internal_docs/a
 
 ## Contrato de rotas
 
-O contrato canônico de rotas vive em `internal_docs/rotas.md` — o que cada endpoint recebe, devolve, quem acessa e quais erros RNV pode retornar. **Antes de implementar qualquer rota, consulte esse documento.** Em conflito com o código, `rotas.md` vence e você me avisa. Os códigos de erro em si estão em `internal_docs/catalogo-de-erros.md`.
+O contrato canônico de rotas vive em `docs/rotas.md` — o que cada endpoint recebe, devolve, quem acessa e quais erros RNV pode retornar. **Antes de implementar qualquer rota, consulte esse documento.** Em conflito com o código, `rotas.md` vence e você me avisa. Os códigos de erro em si estão em `/catalogo-de-erros.md`.
 
 ## Autenticação
 
