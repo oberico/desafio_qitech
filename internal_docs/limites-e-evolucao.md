@@ -160,11 +160,11 @@ Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfec
 - **Bloqueio (`block`) não move dinheiro:** o saldo fica congelado na conta do titular, sem débito, como passivo do banco perante o titular. Para fundos bloqueados por fraude ou ordem judicial, o destino do dinheiro é evolução (por exemplo uma conta interna `held_funds`).
 - **Payout `pending` de conta bloqueada:** fica parado em `in_transit` até o `unblock`; o dinheiro já saiu da conta do titular e ainda não saiu do banco.
 
-### (i) Padrão de paginação: cursor (extrato ainda em offset)
+### (i) Padrão de paginação: cursor opaco assinado
 
-- **Padrão do projeto:** paginação por **cursor** (keyset por `id` interno, `id < before_id`), no formato `{"data": [...], "cursor": <chave pública do último item ou null>, "is_last_page": bool}`, com `limit` de 1 a 100 (padrão 20). Cursor inexistente ou malformado → `400 RNV000001`. Origem: listagens admin do Banco (PR #21); no Transferências o util é `src/utils/pagination.py` (cópia isolada, para trocar fácil) e a primeira rota é `GET /payments`.
+- **Padrão do projeto (decisão do usuário):** paginação por **cursor opaco assinado** (keyset por `id` interno, `id < before_id`). O cursor é `base64url("<id>.<HMAC-SHA256 hex>")` com o segredo `CURSOR_SECRET`; o id interno não vai em claro nem é forjável. Envelope `{"data": [...], "limit": n, "cursor": <opaco ou null>, "is_last_page": bool}`; `limit` de 1 a 100. Cursor adulterado, inventado ou malformado → `400 RNV000001`. Origem: extrato da Victoria (#18, `banco/src/utils/cursor.py`); no Transferências a cópia isolada é `src/utils/cursor.py` e a primeira rota é `GET /payments`.
 - **Por que cursor:** o offset repete ou pula linha quando entra item novo entre duas páginas; o keyset não escorrega.
-- **Exceção atual:** o extrato `GET /accounts/{account_key}/statement` (Victoria, PR #18) usa **offset** hoje. Convergir para cursor quando o extrato for revisitado; até lá os dois formatos coexistem.
+- **A alinhar:** as listagens admin da Natalia (#21) usam a **chave pública** como cursor e devem migrar para o cursor opaco assinado.
 
 ## 4. Caminho de evolução em degraus
 

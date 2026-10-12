@@ -5,7 +5,7 @@ import pytest
 
 from tests.utils.random_generator import RandomGenerator
 
-PAGE_FIELDS = {"data", "cursor", "is_last_page"}
+PAGE_FIELDS = {"data", "limit", "cursor", "is_last_page"}
 PAYMENT_FIELDS = {
     "payment_key",
     "company_key",
@@ -59,7 +59,7 @@ class TestPaymentList:
         status, response = merchant.list_payments()
 
         assert status == 200
-        assert response == {"data": [], "cursor": None, "is_last_page": True}
+        assert response == {"data": [], "limit": 20, "cursor": None, "is_last_page": True}
 
     def test_single_page_is_the_last_page(self, merchant, create_payments):
         create_payments(merchant, 2)
@@ -75,7 +75,10 @@ class TestPaymentList:
         _, response = merchant.list_payments({"limit": 2})
 
         assert response["is_last_page"] is False
-        assert response["cursor"] == keys_of(response)[-1] == created[1]
+        assert response["limit"] == 2
+        assert response["cursor"] is not None
+        assert response["cursor"] not in created
+        assert keys_of(response) == [created[2], created[1]]
 
     def test_cursor_walks_every_page_without_repeating_or_skipping(self, merchant, create_payments):
         created = create_payments(merchant, 5)
@@ -122,8 +125,8 @@ class TestPaymentList:
 
     @pytest.mark.parametrize(
         "cursor",
-        [RandomGenerator.uuid(), "x", ""],
-        ids=["unknown_cursor", "malformed_cursor", "empty_cursor"],
+        [RandomGenerator.uuid(), "x", "not-a-cursor", ""],
+        ids=["invented_cursor", "malformed_cursor", "text_cursor", "empty_cursor"],
     )
     def test_refuses_invalid_cursor(self, merchant, create_payments, cursor):
         create_payments(merchant, 1)
@@ -133,13 +136,27 @@ class TestPaymentList:
         assert status == 400
         assert response["code"] == "RNV000001"
 
-    def test_refuses_cursor_of_another_clients_payment(self, merchant, other_merchant, create_payments):
-        foreign = create_payments(other_merchant, 1)
+    def test_refuses_tampered_cursor(self, merchant, create_payments):
+        create_payments(merchant, 2)
+        _, first_page = merchant.list_payments({"limit": 1})
+        cursor = first_page["cursor"]
+        tampered = ("B" if cursor[0] == "A" else "A") + cursor[1:]
 
-        status, response = merchant.list_payments({"cursor": foreign[0]})
+        status, response = merchant.list_payments({"limit": 1, "cursor": tampered})
 
         assert status == 400
         assert response["code"] == "RNV000001"
+
+    def test_cursor_of_another_client_only_marks_a_position(self, merchant, other_merchant, create_payments):
+        mine = create_payments(merchant, 2)
+        create_payments(other_merchant, 2)
+        _, foreign_page = other_merchant.list_payments({"limit": 1})
+        newest_of_mine = create_payments(merchant, 1)
+
+        status, response = merchant.list_payments({"cursor": foreign_page["cursor"]})
+
+        assert status == 200
+        assert set(keys_of(response)) <= set(mine) | set(newest_of_mine)
 
     def test_refuses_unknown_parameter(self, merchant):
         status, response = merchant.list_payments({"page": "2"})

@@ -100,13 +100,13 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 - **Acesso:** cliente (`Authorization`). Lista só os payments do cliente autenticado, de todas as suas empresas. Payments de outros clientes simplesmente não aparecem (sem `403`/`404`). Cliente sem payments: `200` com lista vazia.
 - **Query (JSON Schema `get_payments.json`, tudo opcional, parâmetro desconhecido recusado):**
   - `limit`: inteiro de `1` a `100` (padrão `20`).
-  - `cursor`: `payment_key` do último item da página anterior.
+  - `cursor`: string opaca devolvida na página anterior (não vazia).
   - `status`: `held`, `settled` ou `refunded`.
-- **Resposta `200`:** `{"data": [PaymentDTO...], "cursor": "<payment_key do último item>" | null, "is_last_page": bool}`. `cursor` é `null` na última página.
+- **Resposta `200`:** `{"data": [PaymentDTO...], "limit": n, "cursor": "<cursor opaco>" | null, "is_last_page": bool}`. `cursor` é `null` na última página.
 - **Ordem:** do mais novo para o mais antigo (`id` interno decrescente). Keyset (`id < id do cursor`), sem `COUNT` (busca `limit + 1`); um payment criado entre duas páginas não repete nem pula itens.
-- **Cursor** inexistente, malformado ou de payment de outro cliente → `400 RNV000001` (não revela a existência).
+- **Cursor opaco e assinado:** base64 urlsafe de `<id interno>.<HMAC-SHA256 hex>` com o segredo `CURSOR_SECRET`; o id interno nunca sai em claro e não se forja. Cursor adulterado, inventado ou malformado → `400 RNV000001`. Um cursor de outro cliente só marca posição: a query continua filtrada por `client_key`.
 - **Erros:**
-  - `400 RNV000001`: `limit` fora de 1..100 ou não inteiro, `status` fora do enumerador, `cursor` malformado/inexistente, parâmetro desconhecido.
+  - `400 RNV000001`: `limit` fora de 1..100 ou não inteiro, `status` fora do enumerador, `cursor` vazio, adulterado, inventado ou malformado, parâmetro desconhecido.
   - `401 RNV000003`: token ausente ou inválido.
 
 **`POST /payments/{payment_key}/refund` — contrato completo.**
