@@ -14,7 +14,7 @@ from middlewares import (
     register_request_logger_middleware,
     register_session_manager_middleware,
 )
-from resources import HealthCheckResource, InFlightResource, PaymentMethodResource, PaymentResource, PayoutResource, SettlementResource
+from resources import HealthCheckResource, InFlightResource, PaymentMethodResource, PaymentResource, PayoutReconcileResource, PayoutResource, SettlementResource
 from utils.logger import setup_logging
 
 setup_logging()
@@ -62,6 +62,7 @@ in_flight_resource = InFlightResource()
 payment_resource = PaymentResource()
 payment_method_resource = PaymentMethodResource()
 payout_resource = PayoutResource()
+payout_reconcile_resource = PayoutReconcileResource()
 settlement_resource = SettlementResource()
 
 application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
@@ -72,5 +73,6 @@ application.add_api_route("/payments/{payment_key}/refund", payment_resource.on_
 application.add_api_route("/payouts", payout_resource.on_post, methods=["POST"])
 application.add_api_route("/payouts/{payout_key}", payout_resource.on_get_by_key, methods=["GET"])
 application.add_api_route("/internal/accounts/{account_key}/in-flight", in_flight_resource.on_get, methods=["GET"])
+application.add_api_route("/internal/payouts/reconcile", payout_reconcile_resource.on_post, methods=["POST"])
 application.add_api_route("/internal/settlements", settlement_resource.on_post, methods=["POST"])
 application.add_api_route("/internal/payment-methods/{method}", payment_method_resource.on_put, methods=["PUT"])

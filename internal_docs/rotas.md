@@ -226,6 +226,36 @@ Erros do job:
 
 Idempotência: rodar de novo é seguro. A chave é determinística; o Banco devolve o lançamento existente e o payment é levado a `settled`.
 
+**`POST /internal/payouts/reconcile` — contrato completo.**
+
+- **Acesso:** só `INTERNAL-TOKEN`; sem ele, `403 RNV000002`.
+- **Corpo opcional** (JSON Schema na porta): `{"as_of": "<ISO 8601 com fuso>"}`; sem campo extra. `as_of` inválido → `400 RNV000001`.
+- **Resposta `200`:** `{"as_of": "<instante usado>", "settled": [payout_key], "failed": [payout_key], "pending": [payout_key]}`.
+  - `settled`: payouts levados a `settled` neste run.
+  - `failed`: payouts levados a `failed` neste run (a reversal já está no Banco).
+  - `pending`: payouts **tratados neste run** que continuam `pending`: ou o interbancário não respondeu e ainda há tentativas, ou o Banco recusou/ficou indisponível no settlement/reversal (próximo run retoma).
+  - Payout que não foi tocado (ainda dentro do backoff, ou já não `pending` ao ser relido) **não aparece** em nenhuma lista. Não há lista de erros por item.
+- **Configuração (env, serviço Transferências):** `PAYOUT_MAX_ATTEMPTS=3`; `PAYOUT_BACKOFF_BASE_SECONDS=60`; `PAYOUT_MAX_PER_RUN=50`; `INTERBANK_API_URL`; `INTERBANK_TIMEOUT_SECONDS=5`.
+- **Backoff:** exponencial dobrando a partir de `PAYOUT_BACKOFF_BASE_SECONDS`, medido de `last_attempt_at` até `as_of`: espera de 60 s após a 1ª tentativa, 120 s após a 2ª. Tentativa só acontece com `as_of >= last_attempt_at + espera`; antes disso o payout fica de fora (sem nova `payout_attempt`). `last_attempt_at` e o `created_at` da `payout_attempt` recebem `as_of`.
+- **Teto por run:** no máximo `PAYOUT_MAX_PER_RUN` payouts acionáveis por chamada, em ordem de `last_attempt_at` (nulos primeiro) e `id`. O resto fica para o próximo run.
+- **Tentativa:** cada chamada ao mock é uma linha append-only em `payout_attempt` (`attempt_number = COUNT + 1`, resultado `confirmed|rejected|timeout`), commitada antes de qualquer lançamento no Banco. O corpo enviado ao mock é exatamente `{payout_key, amount_minor, purpose, destination}`.
+- **Classificação do interbancário** (`connectors/interbank_connector.py`): `200` = `confirmed`; `422` com `status: refused` = `rejected`; timeout de rede, erro de conexão, `504` e qualquer outra resposta (inclusive `4xx`/`5xx` inesperados) = `timeout` (resultado inconclusivo, que se retenta e, esgotado o limite, se desfaz por reversal; é o caminho seguro para o dinheiro do lojista). O caso inesperado é logado.
+
+**Máquina de fases do payout `pending`.** A fase é derivada da última `payout_attempt` (e do `COUNT`), nunca de um campo mutável; a linha do `payout` é travada (`SELECT ... FOR UPDATE`, READ COMMITTED) e o status relido antes de cada passo, em transação própria por passo:
+
+| Estado derivado | Fase | O que faz | Se der certo | Se o Banco recusar/cair |
+|---|---|---|---|---|
+| 0 tentativas, ou último `timeout` com tentativas < 3 e backoff vencido | `attempt` | chama o mock, grava a `payout_attempt`, commit | `confirmed` → fase `settle`; `rejected` → fase `reverse`; `timeout` com tentativas sobrando → fica `pending` (aparece em `pending`); 3º `timeout` → fase `reverse` | (não fala com o Banco) |
+| último `confirmed` | `settle` | lançamento `settlement:<payout_key>` (D `in_transit` / C `reserves`, `settles_transaction_key` = `transaction_key` do payout) | payout `settled` (`payout_transition` + `payout_status_event`, razão `settlement`) | continua `pending`, aparece em `pending`; próximo run repete só o settlement, **sem chamar o mock** |
+| último `rejected`, ou 3 tentativas com último `timeout` | `reverse` | lançamento `reversal:<payout_key>` (D `in_transit` / C conta do cliente, `reverses_transaction_key` = `transaction_key` do payout) | payout `failed` com `failure_reason` `interbank_refused` ou `interbank_timeout` | continua `pending` (ex.: conta bloqueada, `RNV001005`); próximo run repete só a reversal, **sem chamar o mock** |
+
+- `failed` só é gravado **junto** da reversal bem-sucedida (ou reencontrada pela chave determinística, que o Banco deduplica). Nunca existe payout `failed` sem reversal.
+- A `transaction` payout original continua `pending` no livro quando há reversal; quem a desfaz é a reversal (`reverses_transaction_id`). No settlement ela vai a `settled`.
+- Fases `settle` e `reverse` **não** esperam backoff (não chamam o mock).
+- **Concorrência:** dois runs simultâneos serializam no lock do payout; quem chega depois relê o estado e não faz tentativa dupla nem lançamento dobrado (as chaves `settlement:`/`reversal:` são determinísticas e `UNIQUE(payout_id, attempt_number)` é a rede de proteção).
+- **Idempotência:** rodar de novo é seguro; payout `settled`/`failed` nunca é reprocessado.
+- **Custo do lock:** a linha do payout e a conexão do banco ficam presas durante a chamada ao mock (até `INTERBANK_TIMEOUT_SECONDS`, 5 s); ver `limites-e-evolucao.md`.
+
 O mock interbancário que o reconcile chama (`POST /interbank/transfers` no `external-mocks`) está em `mocks-externos.md`.
 
 ### Admin
