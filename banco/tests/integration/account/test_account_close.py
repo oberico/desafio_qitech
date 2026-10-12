@@ -1,5 +1,6 @@
 import pytest
 
+from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.random_generator import RandomGenerator
 
 
@@ -53,6 +54,25 @@ class TestAccountClose:
         status, response = accounts.get_account(account_key, client_token)
         assert status == 200
         assert response["status"] == "rejected"
+
+    def test_closes_account_after_withdrawing_everything(
+        self, accounts, ledger, active_account, client_token, credit_account
+    ):
+        credit_account(active_account, 10000)
+        payout = PayloadGenerator.create_ledger_transaction_payload(
+            type="payout",
+            entries=[
+                {"account_key": active_account, "debit_minor": 10000},
+                {"account_code": "in_transit", "credit_minor": 10000},
+            ],
+        )
+        status, _ = ledger.post_transaction(payout, RandomGenerator.uuid())
+        assert status == 201
+
+        status, response = accounts.close(active_account, client_token)
+
+        assert status == 200
+        assert response["status"] == "closed"
 
     def test_account_of_another_client_looks_nonexistent(self, accounts, active_account, other_client_token):
         status, response = accounts.close(active_account, other_client_token)

@@ -134,6 +134,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${BANCO_DB_USER:-rnv}:${BANCO_DB_PASSWORD:-rnv}@banco-db:5432/${BANCO_DB_NAME:-banco}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-admin-token-dev}
+      CURSOR_SECRET: ${CURSOR_SECRET:-cursor-secret-dev}
       TRANSFERENCIAS_API_URL: http://transferencias-unreachable.invalid:8002
       TRANSFERENCIAS_TIMEOUT_SECONDS: 2
     ports:
