@@ -88,7 +88,7 @@ erDiagram
         integer company_id FK, UK "nulo = conta interna"
         integer class_id FK
         integer status_id FK
-        char1 normal_balance "CHECK d ou c"
+        char1 normal_balance "CHECK: d (devedora) ou c (credora)"
         varchar3 currency "brl"
         timestamptz created_at
     }
@@ -164,8 +164,8 @@ erDiagram
         serial id PK
         varchar50 enumerator "pix, boleto, card; UK com version"
         integer version "CHECK maior ou igual a 1; append-only"
-        integer fee_bps "CHECK 0 a 10000"
-        integer release_window_hours "CHECK 0 a 8760"
+        integer fee_bps "CHECK entre 0 e 10000 bps"
+        integer release_window_hours "CHECK entre 0 e 8760 horas"
         timestamptz created_at
     }
     payment_status {
