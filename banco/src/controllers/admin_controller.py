@@ -2,9 +2,9 @@ import os
 
 from constants import SCHEMAS_DIR
 from controllers.base_controller import BaseController
-from dtos import AccountDTO, AdminClientDTO, CompanyDTO
+from dtos import AccountDTO, AdminClientDTO, CompanyDTO, LedgerTotalsDTO
 from errors import InvalidSchema
-from repositories import AccountRepository, ClientRepository, CompanyRepository
+from repositories import AccountRepository, ClientRepository, CompanyRepository, LedgerRepository
 from utils.pagination import build_page, page_size
 from utils.schema_handler import validate_json
 
@@ -18,6 +18,7 @@ class AdminController(BaseController):
         self.client_repository = ClientRepository(session)
         self.company_repository = CompanyRepository(session)
         self.account_repository = AccountRepository(session)
+        self.ledger_repository = LedgerRepository(session)
 
     def list_clients(self, query: dict) -> dict:
         validate_json(query, GET_ADMIN_PAGE_SCHEMA)
@@ -36,6 +37,9 @@ class AdminController(BaseController):
             lambda account: account.account_key,
             status=query.get("status"),
         )
+
+    def ledger_totals(self) -> dict:
+        return LedgerTotalsDTO.obj_to_dict(self.ledger_repository.natural_balances_by_code())
 
     def _list_page(self, query: dict, repository, to_dict, key_of, **filters) -> dict:
         size = page_size(query)

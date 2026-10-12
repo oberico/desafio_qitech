@@ -22,3 +22,8 @@ class AdminResource:
         controller = AdminController(get_context().session)
         page = controller.list_accounts(dict(request.query_params))
         return JSONResponse(content=jsonable_encoder(page), status_code=http_status.HTTP_200_OK)
+
+    def on_get_internal_accounts(self) -> JSONResponse:
+        controller = AdminController(get_context().session)
+        totals = controller.ledger_totals()
+        return JSONResponse(content=jsonable_encoder(totals), status_code=http_status.HTTP_200_OK)

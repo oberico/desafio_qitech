@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -43,6 +43,19 @@ class LedgerRepository:
         credit = func.coalesce(func.sum(Entry.credit_minor), 0)
         debit = func.coalesce(func.sum(Entry.debit_minor), 0)
         return self.session.query(credit - debit).filter(Entry.account_id == account_id).scalar()
+
+    def natural_balances_by_code(self) -> dict:
+        natural_balance = case(
+            (Account.normal_balance == "d", Entry.debit_minor - Entry.credit_minor),
+            else_=Entry.credit_minor - Entry.debit_minor,
+        )
+        rows = (
+            self.session.query(Account.code, func.coalesce(func.sum(natural_balance), 0))
+            .join(Entry, Entry.account_id == Account.id)
+            .group_by(Account.code)
+            .all()
+        )
+        return {code: int(balance) for code, balance in rows}
 
     def get_type(self, enumerator: str) -> TransactionType:
         return self.session.query(TransactionType).filter(TransactionType.enumerator == enumerator).one()
