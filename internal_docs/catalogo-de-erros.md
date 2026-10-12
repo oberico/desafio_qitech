@@ -74,7 +74,7 @@ de schema/auth e dos erros do ledger quando o lançamento é propagado ao Banco.
 
 | Código | HTTP | Mensagem |
 |---|---|---|
-| RNV001023 | 422 | Valor inválido |
+| RNV001023 | 422 | Valor inválido (`amount_minor` <= 0 ou acima de 9223372036854775807, o teto do BIGINT) |
 | RNV001025 | 404 | Pagamento inexistente ou de outro lojista |
 | RNV001026 | 409 | Fora da janela (valor já liberado) |
 | RNV001003 | 409 | Pagamento já estornado |
