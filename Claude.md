@@ -2,7 +2,7 @@
 
 Instituição de pagamento com conta PJ e gateway de pagamento (agnóstico à forma). **Não oferecemos crédito** — só movimentamos dinheiro de terceiros, sem assumir risco de crédito nem exigir capital próprio. Desafio do Bootcamp QI Tech. Monorepo com **dois serviços de negócio**: `banco/` e `transferencias/`; mais `external-mocks/`, container à parte que simula sistemas externos (interbancário hoje, birô depois) — sem banco, sem auth, estado em memória, chamado só pelos conectores dos serviços de negócio. Contrato em `docs/mocks-externos.md`.
 
-Antes de codar, leia `internal_docs/rfc-rnv-v8.0.md` (a spec; a `rfc-rnv-v7.2.md` fica como registro da defesa) e `internal_docs/analise-defesa-rfc.md` (o porquê de cada decisão) e `docs/catalogo-de-erros.md` (o catálogo de erros). Em conflito, a RFC v8.0 vence e você me avisa. Em caso de dúvida me pergunte e me ajude a entender melhor as regras. Não faça suposições.
+Antes de codar, leia `docs/rfc-rnv-v8.0.md` (a spec; o modelo de dados completo está em `docs/modelo-de-dados.md`, e a `internal_docs/rfc-rnv-v7.2.md` fica como registro da defesa) e `internal_docs/analise-defesa-rfc.md` (o porquê de cada decisão) e `docs/catalogo-de-erros.md` (o catálogo de erros). Em conflito, a RFC v8.0 vence e você me avisa. Em caso de dúvida me pergunte e me ajude a entender melhor as regras. Não faça suposições.
 
 
 **Método: TDD.** Toda construção começa pelo teste — escreve, vê falhar (red), implementa o mínimo até passar (green), refatora com a rede verde. O teste é o contrato; nenhuma fatia começa sem ele. Passo a passo em `internal_docs/roadmap-construcao-api.md`.
