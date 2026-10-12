@@ -7,6 +7,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from errors import InvalidSchema, MethodNotAllowed, NotFoundRoute, QIException
 from errors.handlers import qi_exception_to_response
 from middlewares import (
+    register_admin_auth_middleware,
     register_client_auth_middleware,
     register_internal_token_middleware,
     register_request_context_middleware,
@@ -14,7 +15,7 @@ from middlewares import (
     register_session_manager_middleware,
 )
 
-from resources import AccountResource, AuthResource, ClientResource, CompanyResource, HealthCheckResource, LedgerTransactionResource
+from resources import AccountResource, AdminResource, AuthResource, ClientResource, CompanyResource, HealthCheckResource, LedgerTransactionResource
 from utils.logger import setup_logging
 
 setup_logging()
@@ -46,6 +47,7 @@ application.add_exception_handler(StarletteHTTPException, handle_http_exception)
 application.add_exception_handler(QIException, handle_qi_exception)
 application.add_exception_handler(RequestValidationError, handle_request_validation)
 
+register_admin_auth_middleware(application)
 register_client_auth_middleware(application)
 register_session_manager_middleware(application)
 register_internal_token_middleware(application)
@@ -54,6 +56,7 @@ register_request_context_middleware(application)
 
 health_check_resource = HealthCheckResource()
 account_resource = AccountResource()
+admin_resource = AdminResource()
 auth_resource = AuthResource()
 client_resource = ClientResource()
 company_resource = CompanyResource()
@@ -74,3 +77,7 @@ application.add_api_route("/internal/accounts/{account_key}/block", account_reso
 application.add_api_route("/internal/accounts/{account_key}/unblock", account_resource.on_post_unblock, methods=["POST"])
 application.add_api_route("/internal/internal-accounts", account_resource.on_get_internal, methods=["GET"])
 application.add_api_route("/auth/me", auth_resource.on_get_me, methods=["GET"])
+application.add_api_route("/admin/clients", admin_resource.on_get_clients, methods=["GET"])
+application.add_api_route("/admin/companies", admin_resource.on_get_companies, methods=["GET"])
+application.add_api_route("/admin/accounts", admin_resource.on_get_accounts, methods=["GET"])
+application.add_api_route("/admin/internal-accounts", admin_resource.on_get_internal_accounts, methods=["GET"])

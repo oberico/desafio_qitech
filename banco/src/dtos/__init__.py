@@ -5,3 +5,5 @@ from dtos.internal_account_dto import InternalAccountDTO
 from dtos.auth_dto import AuthIdentityDTO
 from dtos.ledger_transaction_dto import LedgerTransactionDTO
 
+from dtos.admin_client_dto import AdminClientDTO
+from dtos.ledger_totals_dto import LedgerTotalsDTO

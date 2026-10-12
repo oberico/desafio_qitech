@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from starlette.routing import Match
 
-from constants import INTERNAL_ROUTE_PREFIXES, PUBLIC_ROUTES
+from constants import ADMIN_ROUTE_PREFIX, INTERNAL_ROUTE_PREFIXES, PUBLIC_ROUTES
 from controllers import ClientController
 from database import get_context
 from errors import QIException
@@ -9,7 +9,7 @@ from errors.handlers import qi_exception_to_response
 from utils.token import bearer_token
 
 def requires_client_token(application: FastAPI, request: Request) -> bool:
-    if request.url.path.startswith(INTERNAL_ROUTE_PREFIXES):
+    if request.url.path.startswith(INTERNAL_ROUTE_PREFIXES + (ADMIN_ROUTE_PREFIX,)):
         return False
     for route in application.router.routes:
         match, _ = route.matches(request.scope)
