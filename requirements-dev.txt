@@ -1,0 +1,4 @@
+-r banco/requirements.txt
+-r transferencias/requirements.txt
+
+pytest==7.4.4

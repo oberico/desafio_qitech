@@ -1,0 +1,29 @@
+{
+  "title": "PostTransfer",
+  "type": "object",
+  "properties": {
+    "payout_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "amount_minor": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1
+    },
+    "destination": {
+      "type": "object",
+      "properties": {
+        "scenario": {
+          "type": "string",
+          "enum": ["confirm", "refuse", "timeout", "flaky"]
+        }
+      }
+    }
+  },
+  "required": ["payout_key", "amount_minor", "purpose", "destination"],
+  "additionalProperties": false
+}

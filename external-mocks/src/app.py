@@ -1,0 +1,46 @@
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from errors import InvalidSchema, MethodNotAllowed, NotFoundRoute, QIException
+from errors.handlers import qi_exception_to_response
+from resources import HealthCheckResource, InterbankTransferResource
+from utils.logger import setup_logging
+
+setup_logging()
+
+application = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+
+def handle_qi_exception(request: Request, exception: QIException) -> JSONResponse:
+    return qi_exception_to_response(exception)
+
+
+def handle_request_validation(request: Request, exception: RequestValidationError) -> JSONResponse:
+    error = exception.errors()[0]
+    location = ".".join(str(part) for part in error["loc"])
+    return qi_exception_to_response(InvalidSchema(f"{location}: {error['msg']}"))
+
+
+ROUTING_ERRORS = {404: NotFoundRoute, 405: MethodNotAllowed}
+
+
+async def handle_http_exception(request: Request, exception: StarletteHTTPException) -> JSONResponse:
+    error_class = ROUTING_ERRORS.get(exception.status_code)
+    if error_class is None:
+        return await http_exception_handler(request, exception)
+    return qi_exception_to_response(error_class(), exception.headers)
+
+
+application.add_exception_handler(StarletteHTTPException, handle_http_exception)
+application.add_exception_handler(QIException, handle_qi_exception)
+application.add_exception_handler(RequestValidationError, handle_request_validation)
+
+health_check_resource = HealthCheckResource()
+interbank_transfer_resource = InterbankTransferResource()
+
+application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
+application.add_api_route("/health_check", health_check_resource.on_get_health_check, methods=["GET"])
+application.add_api_route("/interbank/transfers", interbank_transfer_resource.on_post, methods=["POST"])

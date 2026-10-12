@@ -1,12 +1,15 @@
 services:
   banco-db:
     build: ./banco/database
+    pull_policy: build
+    tmpfs:
+      - /var/lib/postgresql/data
     environment:
       POSTGRES_USER: ${BANCO_DB_USER:-rnv}
       POSTGRES_PASSWORD: ${BANCO_DB_PASSWORD:-rnv}
       POSTGRES_DB: ${BANCO_DB_NAME:-banco}
     ports:
-      - "${BANCO_DB_PORT:-5432}:5432"
+      - "${BANCO_DB_PORT:-5434}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${BANCO_DB_USER:-rnv} -d ${BANCO_DB_NAME:-banco}"]
       interval: 5s
@@ -15,6 +18,9 @@ services:
 
   transferencias-db:
     build: ./transferencias/database
+    pull_policy: build
+    tmpfs:
+      - /var/lib/postgresql/data
     environment:
       POSTGRES_USER: ${TRANSF_DB_USER:-rnv}
       POSTGRES_PASSWORD: ${TRANSF_DB_PASSWORD:-rnv}
@@ -26,3 +32,118 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  banco-api:
+    build: ./banco
+    pull_policy: build
+    environment:
+      DATABASE_URL: postgresql://${BANCO_DB_USER:-rnv}:${BANCO_DB_PASSWORD:-rnv}@banco-db:5432/${BANCO_DB_NAME:-banco}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
+      TRANSFERENCIAS_API_URL: http://transferencias-api:8002
+      TRANSFERENCIAS_TIMEOUT_SECONDS: ${TRANSFERENCIAS_TIMEOUT_SECONDS:-5}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-admin-token-dev}
+      CURSOR_SECRET: ${CURSOR_SECRET:-cursor-secret-dev}
+    ports:
+      - "${BANCO_API_PORT:-8001}:8001"
+    depends_on:
+      banco-db:
+        condition: service_healthy
+
+  transferencias-api:
+    build: ./transferencias
+    pull_policy: build
+    environment:
+      DATABASE_URL: postgresql://${TRANSF_DB_USER:-rnv}:${TRANSF_DB_PASSWORD:-rnv}@transferencias-db:5432/${TRANSF_DB_NAME:-transferencias}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-admin-token-dev}
+      CURSOR_SECRET: ${CURSOR_SECRET:-cursor-secret-dev}
+      BANK_API_URL: http://banco-api:8001
+      INTERBANK_API_URL: http://external-mocks:8003
+      INTERBANK_TIMEOUT_SECONDS: ${INTERBANK_TIMEOUT_SECONDS:-5}
+      PAYOUT_MAX_ATTEMPTS: ${PAYOUT_MAX_ATTEMPTS:-3}
+      PAYOUT_BACKOFF_BASE_SECONDS: ${PAYOUT_BACKOFF_BASE_SECONDS:-60}
+      PAYOUT_MAX_PER_RUN: ${PAYOUT_MAX_PER_RUN:-50}
+      RECEIPT_ORPHAN_GRACE_HOURS: ${RECEIPT_ORPHAN_GRACE_HOURS:-24}
+      BANK_TIMEOUT_SECONDS: ${BANK_TIMEOUT_SECONDS:-5}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+      DB_POOL_TIMEOUT_SECONDS: ${DB_POOL_TIMEOUT_SECONDS:-3}
+    ports:
+      - "${TRANSF_API_PORT:-8002}:8002"
+    depends_on:
+      transferencias-db:
+        condition: service_healthy
+      banco-api:
+        condition: service_started
+      external-mocks:
+        condition: service_healthy
+
+  external-mocks:
+    build: ./external-mocks
+    pull_policy: build
+    environment:
+      MOCK_TIMEOUT_SECONDS: ${MOCK_TIMEOUT_SECONDS:-30}
+    ports:
+      - "${EXTERNAL_MOCKS_PORT:-8003}:8003"
+
+  banco-fault-proxy:
+    profiles: ["fault"]
+    image: nginx:alpine
+    volumes:
+      - ./banco/fault-proxy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      banco-api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health_check || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  transferencias-api-fault:
+    profiles: ["fault"]
+    build: ./transferencias
+    pull_policy: build
+    environment:
+      DATABASE_URL: postgresql://${TRANSF_DB_USER:-rnv}:${TRANSF_DB_PASSWORD:-rnv}@transferencias-db:5432/${TRANSF_DB_NAME:-transferencias}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-admin-token-dev}
+      CURSOR_SECRET: ${CURSOR_SECRET:-cursor-secret-dev}
+      BANK_API_URL: http://banco-fault-proxy:8080
+      INTERBANK_API_URL: http://external-mocks:8003
+      INTERBANK_TIMEOUT_SECONDS: ${INTERBANK_TIMEOUT_SECONDS:-5}
+      PAYOUT_MAX_ATTEMPTS: ${PAYOUT_MAX_ATTEMPTS:-3}
+      PAYOUT_BACKOFF_BASE_SECONDS: ${PAYOUT_BACKOFF_BASE_SECONDS:-60}
+      PAYOUT_MAX_PER_RUN: ${PAYOUT_MAX_PER_RUN:-50}
+      RECEIPT_ORPHAN_GRACE_HOURS: ${RECEIPT_ORPHAN_GRACE_HOURS:-24}
+      DB_POOL_SIZE: 1
+      DB_MAX_OVERFLOW: 0
+      DB_POOL_TIMEOUT_SECONDS: 0.05
+    ports:
+      - "${TRANSF_FAULT_API_PORT:-8012}:8002"
+    depends_on:
+      transferencias-db:
+        condition: service_healthy
+      banco-fault-proxy:
+        condition: service_healthy
+      banco-api:
+        condition: service_started
+      external-mocks:
+        condition: service_healthy
+
+  banco-api-fault:
+    profiles: ["fault"]
+    build: ./banco
+    pull_policy: build
+    environment:
+      DATABASE_URL: postgresql://${BANCO_DB_USER:-rnv}:${BANCO_DB_PASSWORD:-rnv}@banco-db:5432/${BANCO_DB_NAME:-banco}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-admin-token-dev}
+      CURSOR_SECRET: ${CURSOR_SECRET:-cursor-secret-dev}
+      TRANSFERENCIAS_API_URL: http://transferencias-unreachable.invalid:8002
+      TRANSFERENCIAS_TIMEOUT_SECONDS: 2
+    ports:
+      - "${BANCO_FAULT_API_PORT:-8011}:8001"
+    depends_on:
+      banco-db:
+        condition: service_healthy

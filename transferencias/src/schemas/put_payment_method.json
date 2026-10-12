@@ -1,0 +1,21 @@
+{
+  "title": "PutPaymentMethod",
+  "type": "object",
+  "properties": {
+    "fee_bps": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "release_window_hours": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8760
+    }
+  },
+  "required": [
+    "fee_bps",
+    "release_window_hours"
+  ],
+  "additionalProperties": false
+}

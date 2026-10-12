@@ -1,0 +1,1377 @@
+{
+  "info": {
+    "name": "RNV - Ponta a ponta",
+    "description": "Um roteiro único atravessando Banco e Transferências: cadastro, vendas, estorno, liberação, saques, reconciliação, encerramento e auditoria. Rode com o Runner, pasta por pasta, na ordem. CPF/CNPJ fixos e próprios deste roteiro (não colidem com as outras coleções); para repetir, zere os bancos (`docker compose restart banco-db transferencias-db banco-api transferencias-api`).\n\nCada requisição tem testes (status, código RNV e os valores que importam, como saldos e equation_ok). Rode a coleção inteira em ordem: no Postman, Run collection; no terminal, `npx newman run docs/postman/rnv-ponta-a-ponta.postman_collection.json`. O Insomnia importa este arquivo também (Import > From File). CPF, CNPJ e e-mail são gerados a cada execução, então a coleção roda quantas vezes quiser sem zerar a base; só a auditoria final (pasta 08) mostra totais acumulados de todas as execuções.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Servicos de pe",
+      "description": "Os três containers respondem: Banco (8001), Transferências (8002) e o mock interbancário (8003).",
+      "item": [
+        {
+          "name": "204 Banco",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{banco_url}}/health_check",
+            "description": "Esperado: 204"
+          }
+        },
+        {
+          "name": "204 Transferencias",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{transf_url}}/health_check",
+            "description": "Esperado: 204"
+          }
+        },
+        {
+          "name": "204 mock interbancario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{mocks_url}}/health_check",
+            "description": "Esperado: 204"
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Onboarding (Banco)",
+      "description": "A Carla abre a padaria. O token nasce no Banco e aparece uma única vez, na criação do cliente; as próximas requisições o leem desta resposta.",
+      "item": [
+        {
+          "name": "201 Carla se cadastra",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const digits = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 10));",
+                  "const cpf = digits(9);",
+                  "for (const size of [10, 11]) {",
+                  "  const total = cpf.reduce((sum, d, i) => sum + d * (size - i), 0);",
+                  "  const rest = (total * 10) % 11;",
+                  "  cpf.push(rest === 10 ? 0 : rest);",
+                  "}",
+                  "const cnpj = digits(8).concat([0, 0, 0, 1]);",
+                  "for (const weights of [[5,4,3,2,9,8,7,6,5,4,3,2], [6,5,4,3,2,9,8,7,6,5,4,3,2]]) {",
+                  "  const rest = cnpj.reduce((sum, d, i) => sum + d * weights[i], 0) % 11;",
+                  "  cnpj.push(rest < 2 ? 0 : 11 - rest);",
+                  "}",
+                  "const c = cpf.join(''), j = cnpj.join('');",
+                  "pm.collectionVariables.set('cpf', `${c.slice(0,3)}.${c.slice(3,6)}.${c.slice(6,9)}-${c.slice(9)}`);",
+                  "pm.collectionVariables.set('cnpj', `${j.slice(0,2)}.${j.slice(2,5)}.${j.slice(5,8)}/${j.slice(8,12)}-${j.slice(12)}`);",
+                  "pm.collectionVariables.set('email', `carla.${Date.now()}@padaria-e2e.example.com`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"token\", pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{banco_url}}/clients",
+            "description": "Esperado: 201; token na resposta.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpf\": \"{{cpf}}\",\n  \"name\": \"Carla Mendes\",\n  \"birthdate\": \"1988-04-22\",\n  \"email\": \"{{email}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "201 cadastra a padaria",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"company_key\", pm.response.json().company_key);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{banco_url}}/companies",
+            "description": "Esperado: 201; account_key null (ainda sem conta).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cnpj\": \"{{cnpj}}\",\n  \"legal_name\": \"Padaria da Carla LTDA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "201 abre a conta (birô aprova)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"account_key\", pm.response.json().account_key);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{banco_url}}/companies/{{company_key}}/accounts",
+            "description": "Esperado: 201; status active."
+          }
+        },
+        {
+          "name": "200 saldo inicial",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"balance_minor = 0\", () => pm.expect(pm.response.json().balance_minor).to.eql(0));",
+                  "pm.test(\"balance_formatted = R$ 0,00\", () => pm.expect(pm.response.json().balance_formatted).to.eql(\"R$ 0,00\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{banco_url}}/accounts/{{account_key}}/balance",
+            "description": "Esperado: 200; balance_minor 0."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Vendas (Transferencias)",
+      "description": "Três vendas. Cada uma snapshota taxa e janela (pix 0,99% em 24 h; boleto 1,99% em 72 h; cartão 4,99% em 720 h) e lança no Banco um receipt: D reserves / C in_transit. O dinheiro está no banco, mas ainda não é da Carla: o saldo dela continua zero.",
+      "item": [
+        {
+          "name": "201 venda pix de R$ 100,00",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"pix_payment_key\", pm.response.json().payment_key);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{transf_url}}/payments",
+            "description": "Esperado: 201; status held, fee_bps 99.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_key\": \"{{company_key}}\",\n  \"method\": \"pix\",\n  \"amount_minor\": 10000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "201 venda boleto de R$ 250,00",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"boleto_payment_key\", pm.response.json().payment_key);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{transf_url}}/payments",
+            "description": "Esperado: 201; status held, fee_bps 199.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_key\": \"{{company_key}}\",\n  \"method\": \"boleto\",\n  \"amount_minor\": 25000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "201 venda cartao de R$ 1.000,00",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{transf_url}}/payments",
+            "description": "Esperado: 201; status held, fee_bps 499.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_key\": \"{{company_key}}\",\n  \"method\": \"card\",\n  \"amount_minor\": 100000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "200 saldo continua zero",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"balance_minor = 0\", () => pm.expect(pm.response.json().balance_minor).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{banco_url}}/accounts/{{account_key}}/balance",
+            "description": "Esperado: 200; balance_minor 0 (tudo em trânsito)."
+          }
+        },
+        {
+          "name": "200 vendas da Carla",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{transf_url}}/payments",
+            "description": "Esperado: 200; as 3 vendas, a mais nova primeiro, todas held."
+          }
+        },
+        {
+          "name": "200 em voo na conta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"held_payments = 3\", () => pm.expect(pm.response.json().held_payments).to.eql(3));",
+                  "pm.test(\"pending_payouts = 0\", () => pm.expect(pm.response.json().pending_payouts).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "INTERNAL-TOKEN",
+                "value": "{{internal_token}}"
+              }
+            ],
+            "url": "{{transf_url}}/internal/accounts/{{account_key}}/in-flight",
+            "description": "Esperado: 200; held_payments 3, pending_payouts 0."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Estorno dentro da janela",
+      "description": "O cliente do boleto desiste. Enquanto o payment está held, o estorno devolve o valor cheio (sem taxa): lançamento refund D in_transit / C reserves.",
+      "item": [
+        {
+          "name": "200 estorna o boleto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status = refunded\", () => pm.expect(pm.response.json().status).to.eql(\"refunded\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{transf_url}}/payments/{{boleto_payment_key}}/refund",
+            "description": "Esperado: 200; status refunded."
+          }
+        },
+        {
+          "name": "409 estornar de novo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code RNV001003\", () => pm.expect(pm.response.json().code).to.eql(\"RNV001003\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{transf_url}}/payments/{{boleto_payment_key}}/refund",
+            "description": "Esperado: 409 RNV001003"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Liberacao (job de settlement)",
+      "description": "O job libera o que venceu a janela. O as_of em 2099 simula o tempo passando. Lançamento por venda: D in_transit (valor cheio) / C conta da Carla (líquido) / C revenue (taxa). Taxa arredondada para cima: pix 100,00 a 0,99% = 0,99; cartão 1.000,00 a 4,99% = 49,90. Líquido: 99,01 + 950,10 = 1.049,11.",
+      "item": [
+        {
+          "name": "200 roda o job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "INTERNAL-TOKEN",
+                "value": "{{internal_token}}"
+              }
+            ],
+            "url": "{{transf_url}}/internal/settlements",
+            "description": "Esperado: 200; settled traz o pix e o cartão; o boleto estornado não aparece.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"as_of\": \"2099-01-01T00:00:00Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "200 pix agora settled",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status = settled\", () => pm.expect(pm.response.json().status).to.eql(\"settled\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{transf_url}}/payments/{{pix_payment_key}}",
+            "description": "Esperado: 200; status settled."
+          }
+        },
+        {
+          "name": "200 saldo da Carla",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"balance_minor = 104911\", () => pm.expect(pm.response.json().balance_minor).to.eql(104911));",
+                  "pm.test(\"balance_formatted = R$ 1.049,11\", () => pm.expect(pm.response.json().balance_formatted).to.eql(\"R$ 1.049,11\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{banco_url}}/accounts/{{account_key}}/balance",
+            "description": "Esperado: 200; balance_minor 104911 (R$ 1.049,11)."
+          }
+        },
+        {
+          "name": "200 extrato",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{banco_url}}/accounts/{{account_key}}/statement",
+            "description": "Esperado: 200; 2 créditos de settlement: 95010 e 9901."
+          }
+        },
+        {
+          "name": "409 estorno depois de liberado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code RNV001026\", () => pm.expect(pm.response.json().code).to.eql(\"RNV001026\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{transf_url}}/payments/{{pix_payment_key}}/refund",
+            "description": "Esperado: 409 RNV001026\nDepois de settled o dinheiro já é da Carla: o estorno é recusado."
+          }
+        },
+        {
+          "name": "200 rodar o job de novo nao muda nada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "INTERNAL-TOKEN",
+                "value": "{{internal_token}}"
+              }
+            ],
+            "url": "{{transf_url}}/internal/settlements",
+            "description": "Esperado: 200; settled e deferred vazios (idempotente).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"as_of\": \"2099-01-01T00:00:00Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Saques",
+      "description": "O payout debita a conta na hora (D conta / C in_transit) e nasce pending. Quem leva o dinheiro para fora é o reconcile, chamando o interbancário. destination.scenario diz ao mock o que responder.",
+      "item": [
+        {
+          "name": "201 saca R$ 500,00 via pix",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"pix_payout_key\", pm.response.json().payout_key);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{transf_url}}/payouts",
+            "description": "Esperado: 201; status pending, attempts 0.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"account_key\": \"{{account_key}}\",\n  \"purpose\": \"withdrawal\",\n  \"amount_minor\": 50000,\n  \"destination\": {\"pix_key\": \"carla@padaria.example.com\", \"scenario\": \"confirm\"}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "201 paga boleto de R$ 300,00 do fornecedor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"boleto_payout_key\", pm.response.json().payout_key);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{transf_url}}/payouts",
+            "description": "Esperado: 201; status pending.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"account_key\": \"{{account_key}}\",\n  \"purpose\": \"bill_payment\",\n  \"amount_minor\": 30000,\n  \"destination\": {\"barcode\": \"23793381286000782713695000063305975520000030000\", \"scenario\": \"refuse\"}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "200 saldo depois dos saques",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"balance_minor = 24911\", () => pm.expect(pm.response.json().balance_minor).to.eql(24911));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{banco_url}}/accounts/{{account_key}}/balance",
+            "description": "Esperado: 200; balance_minor 24911 (104911 - 50000 - 30000)."
+          }
+        },
+        {
+          "name": "422 saque maior que o saldo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"code RNV001006\", () => pm.expect(pm.response.json().code).to.eql(\"RNV001006\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{transf_url}}/payouts",
+            "description": "Esperado: 422 RNV001006",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"account_key\": \"{{account_key}}\",\n  \"purpose\": \"withdrawal\",\n  \"amount_minor\": 100000,\n  \"destination\": {\"pix_key\": \"carla@padaria.example.com\"}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "422 tenta encerrar com saques em voo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"code RNV001035\", () => pm.expect(pm.response.json().code).to.eql(\"RNV001035\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{banco_url}}/accounts/{{account_key}}/close",
+            "description": "Esperado: 422 RNV001035"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Reconciliacao (job de payout)",
+      "description": "O mock confirma o pix e recusa o boleto. Confirmado: settlement D in_transit / C reserves (o dinheiro sai do banco). Recusado: reversal D in_transit / C conta da Carla (o dinheiro volta) e o payout fica failed.",
+      "item": [
+        {
+          "name": "200 roda o reconcile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "INTERNAL-TOKEN",
+                "value": "{{internal_token}}"
+              }
+            ],
+            "url": "{{transf_url}}/internal/payouts/reconcile",
+            "description": "Esperado: 200; settled: o pix; failed: o boleto.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"as_of\": \"2099-01-01T00:00:00Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "200 pix saiu",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status = settled\", () => pm.expect(pm.response.json().status).to.eql(\"settled\"));",
+                  "pm.test(\"attempts = 1\", () => pm.expect(pm.response.json().attempts).to.eql(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{transf_url}}/payouts/{{pix_payout_key}}",
+            "description": "Esperado: 200; status settled, attempts 1."
+          }
+        },
+        {
+          "name": "200 boleto falhou",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status = failed\", () => pm.expect(pm.response.json().status).to.eql(\"failed\"));",
+                  "pm.test(\"failure_reason = interbank_refused\", () => pm.expect(pm.response.json().failure_reason).to.eql(\"interbank_refused\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{transf_url}}/payouts/{{boleto_payout_key}}",
+            "description": "Esperado: 200; status failed, failure_reason interbank_refused."
+          }
+        },
+        {
+          "name": "200 os R$ 300,00 voltaram",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"balance_minor = 54911\", () => pm.expect(pm.response.json().balance_minor).to.eql(54911));",
+                  "pm.test(\"balance_formatted = R$ 549,11\", () => pm.expect(pm.response.json().balance_formatted).to.eql(\"R$ 549,11\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{banco_url}}/accounts/{{account_key}}/balance",
+            "description": "Esperado: 200; balance_minor 54911."
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Encerramento",
+      "description": "Para encerrar, a conta precisa de saldo zero e nada em trânsito no Transferências. A Carla saca o resto, o reconcile confirma e a conta fecha.",
+      "item": [
+        {
+          "name": "201 saca o restante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{transf_url}}/payouts",
+            "description": "Esperado: 201; status pending.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"account_key\": \"{{account_key}}\",\n  \"purpose\": \"transfer\",\n  \"amount_minor\": 54911,\n  \"destination\": {\"bank\": \"001\", \"branch\": \"1234\", \"account\": \"98765-4\", \"scenario\": \"confirm\"}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "422 ainda ha payout pending",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"code RNV001035\", () => pm.expect(pm.response.json().code).to.eql(\"RNV001035\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{banco_url}}/accounts/{{account_key}}/close",
+            "description": "Esperado: 422 RNV001035\nO saldo já é zero, mas o payout ainda não saiu: o Banco pergunta ao Transferências (in-flight) e barra."
+          }
+        },
+        {
+          "name": "200 reconcile confirma",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "INTERNAL-TOKEN",
+                "value": "{{internal_token}}"
+              }
+            ],
+            "url": "{{transf_url}}/internal/payouts/reconcile",
+            "description": "Esperado: 200; settled: o último saque.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"as_of\": \"2099-01-01T00:10:00Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "200 nada em voo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"held_payments = 0\", () => pm.expect(pm.response.json().held_payments).to.eql(0));",
+                  "pm.test(\"pending_payouts = 0\", () => pm.expect(pm.response.json().pending_payouts).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "INTERNAL-TOKEN",
+                "value": "{{internal_token}}"
+              }
+            ],
+            "url": "{{transf_url}}/internal/accounts/{{account_key}}/in-flight",
+            "description": "Esperado: 200; held_payments 0, pending_payouts 0."
+          }
+        },
+        {
+          "name": "200 encerra a conta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status = closed\", () => pm.expect(pm.response.json().status).to.eql(\"closed\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{banco_url}}/accounts/{{account_key}}/close",
+            "description": "Esperado: 200; status closed."
+          }
+        },
+        {
+          "name": "403 venda com a conta encerrada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"code RNV001031\", () => pm.expect(pm.response.json().code).to.eql(\"RNV001031\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{transf_url}}/payments",
+            "description": "Esperado: 403 RNV001031",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_key\": \"{{company_key}}\",\n  \"method\": \"pix\",\n  \"amount_minor\": 1000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "200 extrato continua legivel",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{banco_url}}/accounts/{{account_key}}/statement",
+            "description": "Esperado: 200; 2 settlements, 3 payouts e 1 reversal; saldo derivado zero."
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Auditoria (admin)",
+      "description": "Visão do operador. A equação do livro: reserves = in_transit + revenue + soma das contas de clientes. Com a base zerada antes do roteiro: reserves 5.089 (só as taxas ficaram no banco), in_transit 0, revenue 5.089, clientes 0.",
+      "item": [
+        {
+          "name": "200 totais do livro",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"equation_ok = true\", () => pm.expect(pm.response.json().equation_ok).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{banco_url}}/admin/internal-accounts",
+            "description": "Esperado: 200; equation_ok true."
+          }
+        },
+        {
+          "name": "200 vendas da padaria",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{transf_url}}/admin/payments?company_key={{company_key}}",
+            "description": "Esperado: 200; as 3 vendas: 2 settled e 1 refunded."
+          }
+        },
+        {
+          "name": "200 contas encerradas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{banco_url}}/admin/accounts?status=closed",
+            "description": "Esperado: 200; inclui a conta da padaria."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "banco_url",
+      "value": "http://localhost:8001"
+    },
+    {
+      "key": "transf_url",
+      "value": "http://localhost:8002"
+    },
+    {
+      "key": "mocks_url",
+      "value": "http://localhost:8003"
+    },
+    {
+      "key": "internal_token",
+      "value": "internal-token-dev"
+    },
+    {
+      "key": "admin_token",
+      "value": "admin-token-dev"
+    },
+    {
+      "key": "cpf",
+      "value": "390.533.447-05"
+    },
+    {
+      "key": "email",
+      "value": "carla@padaria-e2e.example.com"
+    },
+    {
+      "key": "cnpj",
+      "value": "73.194.286/0001-67"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "company_key",
+      "value": ""
+    },
+    {
+      "key": "account_key",
+      "value": ""
+    },
+    {
+      "key": "pix_payment_key",
+      "value": ""
+    },
+    {
+      "key": "boleto_payment_key",
+      "value": ""
+    },
+    {
+      "key": "pix_payout_key",
+      "value": ""
+    },
+    {
+      "key": "boleto_payout_key",
+      "value": ""
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "title": "PostCompanies",
+  "type": "object",
+  "properties": {
+    "cnpj": {
+      "type": "string",
+      "pattern": "^[0-9]{2}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}$"
+    },
+    "legal_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "\\S"
+    }
+  },
+  "required": ["cnpj", "legal_name"],
+  "additionalProperties": false
+}

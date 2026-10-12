@@ -9,7 +9,7 @@ local.env
 *.pfx
 credentials
 .aws/
-
+internal_docs/*
 # --- Dados -------------------------------------------------
 *.csv
 *.xlsx
@@ -65,3 +65,5 @@ coverage.xml
 # --- Tipagem estática --------------------------------------
 .mypy_cache/
 .ruff_cache/
+reports/
+payload.json

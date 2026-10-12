@@ -1,0 +1,111 @@
+name: CI Transferências
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-transferencias-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+
+      - name: Install test dependencies
+        run: pip install -r transferencias/requirements-dev.txt
+
+      - name: Build and start containers
+        id: build
+        run: docker compose up -d --build
+
+      - name: Wait for APIs to be healthy
+        id: health
+        run: |
+          for url in http://localhost:8001/health_check http://localhost:8002/health_check; do
+            healthy=false
+            for attempt in $(seq 1 30); do
+              if curl -fsS "$url" > /dev/null; then
+                echo "healthy: $url"
+                healthy=true
+                break
+              fi
+              sleep 2
+            done
+            if [ "$healthy" != "true" ]; then
+              echo "not healthy after 60s: $url"
+              exit 1
+            fi
+          done
+
+      - name: Run pytest (transferencias)
+        id: pytest
+        run: |
+          mkdir -p reports
+          cd transferencias
+          timeout 300 python -m pytest tests/ -m "not fault" --junitxml=../reports/transferencias.xml
+
+      - name: Start fault-injection profile
+        id: fault_up
+        run: docker compose --profile fault up -d --build
+
+      - name: Wait for the fault API to be healthy
+        id: fault_health
+        run: |
+          url=http://localhost:8012/health_check
+          for attempt in $(seq 1 30); do
+            if curl -fsS "$url" > /dev/null; then
+              echo "healthy: $url"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "not healthy after 60s: $url"
+          exit 1
+
+      - name: Run pytest (transferencias, fault)
+        id: pytest_fault
+        run: |
+          cd transferencias
+          timeout 300 python -m pytest tests/ -m fault --junitxml=../reports/transferencias-fault.xml
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose --profile fault logs --no-color --tail=200
+
+      - name: Stop containers
+        if: always()
+        run: docker compose --profile fault down -v
+
+      - name: Notify Discord
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          JOB_STATUS: ${{ job.status }}
+          STEPS_JSON: ${{ toJSON(steps) }}
+          SERVICE_TITLE: "Transferências CI"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha || github.sha }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          COMMIT_MESSAGE: ${{ github.event.pull_request.title || github.event.head_commit.message }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_WEBHOOK_URL not set; skipping notification"
+            exit 0
+          fi
+          python3 .github/scripts/discord_report.py > payload.json
+          curl -fsS -H "Content-Type: application/json" -d @payload.json "$DISCORD_WEBHOOK_URL"
