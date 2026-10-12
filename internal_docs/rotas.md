@@ -91,9 +91,23 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 | 1 | POST | `/payments` | cliente | Registra venda; snapshota tarifa+janela; credita in_transit. Erros: `RNV001030`, `RNV001031`, `RNV001023`. |
 | 2 | GET | `/payments/{payment_key}` | cliente | Consulta pagamento; IDOR → `404 RNV001025`. |
 | 2 | POST | `/payments/{payment_key}/refund` | cliente | Estorno cheio enquanto o payment está `held`; `409 RNV001026` se já `settled`, `409 RNV001003` se já estornado. Sem Idempotency-Key (estado `held`→`refunded` guarda). Contrato abaixo. |
-| 3 | GET | `/payments` | cliente | Lista paginada do lojista. |
+| 3 | GET | `/payments` | cliente | Lista paginada (cursor) dos payments das empresas do cliente. Contrato abaixo. |
 
 **Limite do `POST /payments`:** `amount_minor` deve ficar entre `1` e `9223372036854775807` (teto do `BIGINT`). `<= 0` ou acima do teto → `422 RNV001023`; antes desse limite o valor acima do teto virava `500`.
+
+**`GET /payments` — contrato completo.**
+
+- **Acesso:** cliente (`Authorization`). Lista só os payments do cliente autenticado, de todas as suas empresas. Payments de outros clientes simplesmente não aparecem (sem `403`/`404`). Cliente sem payments: `200` com lista vazia.
+- **Query (JSON Schema `get_payments.json`, tudo opcional, parâmetro desconhecido recusado):**
+  - `limit`: inteiro de `1` a `100` (padrão `20`).
+  - `cursor`: `payment_key` do último item da página anterior.
+  - `status`: `held`, `settled` ou `refunded`.
+- **Resposta `200`:** `{"data": [PaymentDTO...], "cursor": "<payment_key do último item>" | null, "is_last_page": bool}`. `cursor` é `null` na última página.
+- **Ordem:** do mais novo para o mais antigo (`id` interno decrescente). Keyset (`id < id do cursor`), sem `COUNT` (busca `limit + 1`); um payment criado entre duas páginas não repete nem pula itens.
+- **Cursor** inexistente, malformado ou de payment de outro cliente → `400 RNV000001` (não revela a existência).
+- **Erros:**
+  - `400 RNV000001`: `limit` fora de 1..100 ou não inteiro, `status` fora do enumerador, `cursor` malformado/inexistente, parâmetro desconhecido.
+  - `401 RNV000003`: token ausente ou inválido.
 
 **`POST /payments/{payment_key}/refund` — contrato completo.**
 

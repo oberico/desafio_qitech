@@ -1,0 +1,19 @@
+{
+  "title": "GetPayments",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["held", "settled", "refunded"]
+    },
+    "limit": {
+      "type": "string",
+      "pattern": "^([1-9][0-9]?|100)$"
+    },
+    "cursor": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F-]{36}$"
+    }
+  },
+  "additionalProperties": false
+}

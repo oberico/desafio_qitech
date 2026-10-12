@@ -12,6 +12,7 @@ from errors import (
     CompanyWithoutAccount,
     IdempotencyKeyReused,
     InvalidAmount,
+    InvalidSchema,
     NotFoundCompany,
     NotFoundPayment,
     PaymentAlreadyRefunded,
@@ -19,10 +20,12 @@ from errors import (
 )
 from models import Payment, PaymentStatus, PaymentStatusEvent
 from repositories import PaymentRepository, PaymentTransitionRepository
+from utils.pagination import build_page, page_size
 from utils.payload_hash import payload_hash
 from utils.schema_handler import validate_json
 
 POST_PAYMENT_SCHEMA = os.path.join(SCHEMAS_DIR, "post_payment.json")
+GET_PAYMENTS_SCHEMA = os.path.join(SCHEMAS_DIR, "get_payments.json")
 ACTIVE_ACCOUNT_STATUS = "active"
 MAX_AMOUNT_MINOR = 9223372036854775807
 REFUND_REASON = "refund"
@@ -78,6 +81,22 @@ class PaymentController(BaseController):
             raise NotFoundPayment(payment_key)
 
         return PaymentDTO.obj_to_dict(payment)
+
+    def list_page(self, query: dict, client_key: str) -> dict:
+        validate_json(query, GET_PAYMENTS_SCHEMA)
+        size = page_size(query)
+        before_id = self._cursor_id(query.get("cursor"), client_key)
+
+        payments = self.payment_repository.list_newest_first(client_key, size + 1, before_id, query.get("status"))
+        return build_page(payments, size, PaymentDTO.obj_to_dict, lambda payment: payment.payment_key)
+
+    def _cursor_id(self, cursor: str, client_key: str) -> int:
+        if cursor is None:
+            return None
+        payment = self.payment_repository.get_by_key(cursor.lower(), client_key)
+        if payment is None:
+            raise InvalidSchema(f"cursor: {cursor} does not point to an existing item")
+        return payment.id
 
     def refund(self, payment_key: str, client_key: str) -> dict:
         payment = self.payment_repository.get_locked_by_key(payment_key, client_key)
