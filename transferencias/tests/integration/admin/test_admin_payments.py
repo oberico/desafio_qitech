@@ -209,6 +209,13 @@ class TestAdminPayments:
         assert status == 400
         assert response["code"] == "RNV000001"
 
+    def test_unknown_parameter_error_points_to_the_query(self, admin, admin_token):
+        status, response = admin.get(ROUTE, admin_token, {"page": "2"})
+
+        assert status == 400
+        assert "query: " in response["description"]
+        assert "body" not in response["description"]
+
     @pytest.mark.parametrize(
         "cursor",
         [RandomGenerator.uuid(), "x", "not-a-cursor", ""],

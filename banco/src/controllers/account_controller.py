@@ -83,7 +83,7 @@ class AccountController(BaseController):
         return AccountBalanceDTO.obj_to_dict(account, self.ledger_repository.balance_of(account.id))
 
     def get_statement(self, account_key: str, client_id: int, params: dict) -> dict:
-        validate_json(params, GET_ACCOUNT_STATEMENT_SCHEMA)
+        validate_json(params, GET_ACCOUNT_STATEMENT_SCHEMA, root="query")
         limit = int(params.get("limit", DEFAULT_STATEMENT_LIMIT))
         before_entry_id = decode_cursor(params["cursor"]) if "cursor" in params else None
         created_from = self._parse_datetime(params, "from")

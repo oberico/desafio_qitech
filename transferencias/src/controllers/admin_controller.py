@@ -17,7 +17,7 @@ class AdminController(BaseController):
         self.payment_repository = PaymentRepository(session)
 
     def list_payments(self, query: dict) -> dict:
-        validate_json(query, GET_ADMIN_PAYMENTS_SCHEMA)
+        validate_json(query, GET_ADMIN_PAYMENTS_SCHEMA, root="query")
         size = page_size(query)
         before_id = decode_cursor(query["cursor"]) if "cursor" in query else None
 
