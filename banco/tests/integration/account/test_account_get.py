@@ -23,6 +23,13 @@ class TestAccountGet:
         assert response["company_key"] == company_key
         assert response["status"] == "active"
 
+    def test_returns_the_contract_fields(self, accounts, active_account, client_token):
+        status, response = accounts.get_account(active_account, client_token)
+        assert status == 200
+        assert set(response) == {"account_key", "company_key", "status", "currency", "created_at"}
+        assert response["currency"] == "brl"
+        assert response["created_at"]
+
     def test_returns_rejected_account(self, accounts, open_account, client_token):
         account_key = open_account(client_token, RandomGenerator.cnpj_rejected_by_bureau())
         status, response = accounts.get_account(account_key, client_token)

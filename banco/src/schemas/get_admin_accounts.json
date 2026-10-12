@@ -1,0 +1,19 @@
+{
+  "title": "GetAdminAccounts",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["created", "active", "rejected", "blocked", "closed"]
+    },
+    "limit": {
+      "type": "string",
+      "pattern": "^([1-9][0-9]?|100)$"
+    },
+    "cursor": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}
