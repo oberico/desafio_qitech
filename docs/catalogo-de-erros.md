@@ -1,9 +1,37 @@
-# Catálogo de erros — RNV
+# Catálogo de erros
 
-> Fonte da verdade dos códigos de erro. Alinhado com o documento de Rotas v7 e a RFC v7.2.
-> Formato da resposta: `{ title, description, translation, code }`.
-> `RNV000xxx` = genéricos (schema, auth). `RNV001xxx` = regra de negócio.
-> Números são contrato estável: não renumerar. `RNV001011` está reservado (sem uso).
+Todos os códigos de erro da API do RNV, com o status HTTP e o significado de cada um. As rotas que devolvem cada código estão em [Rotas da API](rotas.md).
+
+[← Voltar ao README](../README.md)
+
+## Sumário
+
+- [Formato do erro](#formato-do-erro)
+- [Genéricos](#genéricos) · [Integração entre serviços](#integração-entre-serviços)
+- [Cadastro](#cadastro-cliente--empresa) · [Conta](#conta) · [Ledger](#ledger-transações--entries)
+- [Pagamento](#pagamento-venda) · [Payout](#payout-saque--saída) · [Admin](#admin)
+- [Notas e decisões](#notas-e-decisões)
+
+## Formato do erro
+
+Todo erro da API tem o mesmo formato:
+
+```json
+{
+  "title": "Account not Found",
+  "description": "Account with key 7f3a... was not found.",
+  "translation": "A conta com chave 7f3a... não foi encontrada.",
+  "code": "RNV001021"
+}
+```
+
+| Faixa | Tipo |
+|---|---|
+| `RNV000xxx` | genéricos: formato da requisição, autenticação e infraestrutura |
+| `RNV001xxx` | regras de negócio |
+
+> [!NOTE]
+> Os números são um contrato estável: nunca são renumerados nem reaproveitados. 
 
 ## Genéricos
 
@@ -55,10 +83,9 @@
 | RNV001009 | 409 | Conta não está active, não pode bloquear nem encerrar. A tradução diz o status atual (`A conta está bloqueada, ...`) |
 | RNV001010 | 409 | Conta não está blocked (não pode desbloquear) |
 
-> **Leitura passa sempre.** `GET /balance` e `GET /statement` respondem mesmo com a conta
-> `blocked` ou `closed` — o padrão de banco é deixar o titular ver saldo e extrato de uma conta
-> fechada/bloqueada. O guard de conta `active` (`RNV001031`) vale **só para escrita** (criar
-> pagamento, criar payout). Logo esses dois códigos nunca aparecem em rota de leitura.
+> [!NOTE]
+> **Leitura passa sempre.** `GET /balance` e `GET /statement` respondem mesmo com a conta `blocked` ou `closed`: o titular sempre pode ver o saldo e o extrato. O guard de conta `active` (`RNV001031`) vale **só para escrita** (criar pagamento ou saque).
+
 
 ## Ledger (transações / entries)
 

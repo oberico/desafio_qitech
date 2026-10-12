@@ -2,7 +2,7 @@
 
 Status: vivo; atualize a coluna de status quando um degrau for aplicado.
 
-> Escopo: a arquitetura atual (dois serviços, HTTP síncrono + idempotência), que é uma decisão consciente da RFC (§1 "Arquitetura" e §6 "Saga, fila ou processamento assíncrono"). Este documento não discute o desenho do livro; só registra onde ele para de escalar e o que fazemos depois. Fontes: `rfc-rnv-v7.2.md`, `analise-defesa-rfc.md` §4.5, `catalogo-de-erros.md`, `rotas.md`, `mocks-externos.md` e o código citado em cada seção.
+> Escopo: a arquitetura atual (dois serviços, HTTP síncrono + idempotência), que é uma decisão consciente da RFC (§1 "Arquitetura" e §6 "Saga, fila ou processamento assíncrono"). Este documento não discute o desenho do livro; só registra onde ele para de escalar e o que fazemos depois. Fontes: `catalogo-de-erros.md`, `rotas.md`, `mocks-externos.md` e o código citado em cada seção.
 
 ## 1. Resumo
 
@@ -10,7 +10,8 @@ Status: vivo; atualize a coluna de status quando um degrau for aplicado.
 - **Degrada com volume:** a conexão do banco do Transferências fica presa durante a chamada HTTP ao Banco, e a disponibilidade do Transferências depende da do Banco.
 - **O que não depende de escala:** a corretude do dinheiro. Ela vem da chave determinística no lançamento, do `UNIQUE` e do lock `FOR UPDATE` no débito. Lento ou fora do ar, o sistema pode recusar ou atrasar, mas não lança duas vezes nem deixa saldo negativo.
 - **O pior caso real é o "resultado desconhecido":** um timeout no `POST /payments` não prova que o dinheiro não se moveu (seção 2).
-- **Lacuna aberta:** não existe reconciliação periódica Transferências × Banco. É o primeiro item a construir se o produto crescer.
+- **Lacuna aberta:** os jobs de reconciliação existem (`POST /internal/receipts/reconcile` e `POST /internal/payouts/reconcile`), mas nada os chama sozinho: falta um agendador. A equação do livro só é conferida quando alguém consulta o admin.
+
 
 ## 2. O que acontece quando o Banco não responde no `POST /payments`
 
@@ -61,13 +62,13 @@ Se no cenário B o cliente **não retentar**, sobra no Banco um receipt `settled
 - **Resíduo aceito:** se o retry tardio receber o replay do Banco **antes** do estorno e commitar o `payment` **depois** da checagem local do job, nasce um `payment` `held` sobre um recebimento estornado: não libera (`RNV001014` no settlement) nem estorna. Nenhum dinheiro se cria ou se perde (o livro fecha), mas o `payment` fica parado. Exige um retry exatamente na janela de milissegundos entre a listagem e o estorno, depois de 24 h de carência. Fechar a janela exigiria uma trava comum (por exemplo, advisory lock por `company_key` + chave) entre o job e o `POST /payments`.
 - **Custo:** a listagem inclui os recebimentos de vendas `held` ainda na janela (até 720 h de cartão) e qualquer `receipt` lançado direto no ledger; o job lê tudo isso a cada run, 100 por página.
 
-### Inconsistência: o texto do `RNV001017`
+### O texto do `RNV001017` (corrigido)
 
-O catálogo (`internal_docs/catalogo-de-erros.md`, linha do `RNV001017`) diz "Banco indisponível (nada foi gravado)", e `transferencias/src/errors/custom_errors.py` (`BankUnavailable`) diz "The bank service is unavailable; nothing was recorded." / "O Banco está indisponível; nada foi gravado."
+O texto antigo, no catálogo e em `transferencias/src/errors/custom_errors.py` (`BankUnavailable`), dizia "O Banco está indisponível; nada foi gravado."
 
-Isso é verdade **no Transferências** e impreciso no timeout: o Banco pode ter gravado o receipt (cenário B). Redação adotada (aplicada em 2026-10-11, com aprovação do usuário, no catálogo e em `custom_errors.py`):
+Isso é verdade **no Transferências** e impreciso no timeout: o Banco pode ter gravado o receipt (cenário B). A redação foi corrigida em 2026-10-11, no catálogo e em `custom_errors.py`:
 
-| Onde | Redação proposta |
+| Onde | Redação atual |
 |---|---|
 | Catálogo | Banco indisponível ou sem resposta; nada foi gravado no Transferências, e o resultado no Banco pode ser desconhecido. Retente com a mesma `Idempotency-Key`. |
 | `description` (en) | The bank service is unavailable or did not answer in time; nothing was recorded in this service and the outcome at the bank may be unknown. Retry with the same Idempotency-Key. |
@@ -108,19 +109,20 @@ O código `RNV001017` não muda (o catálogo diz que número é contrato estáve
 
 ### (c) Resultado desconhecido no timeout
 
-Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfecho é resolvido pelo retry do cliente (idempotência) ou, se ele nunca vier, por uma reconciliação que não existe.
+Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfecho é resolvido pelo retry do cliente (idempotência) ou, se ele nunca vier, pelo job `POST /internal/receipts/reconcile`, que estorna o receipt órfão depois de 24 h.
+
 
 ### (d) Conta quente no débito
 
 - **O que é:** o débito faz `SELECT ... FOR UPDATE` na linha da `account`, soma o saldo depois de travar, confere e insere (`banco/src/controllers/ledger_controller.py`, `_ensure_funds`; RFC §5.1). Débitos da **mesma** conta fazem fila; contas diferentes seguem em paralelo.
 - **Por que existe:** é o que impede o *lost update* sem guardar saldo na `entry`.
 - **Quando dói:** um lojista com muitos saques simultâneos. Mil débitos na mesma conta viram uma fila de mil transações curtas (RFC §5.1, perguntas de estresse). Mais lento para aquela conta, nunca errado.
-- **Mitigação hoje:** índice `(account_id, id) INCLUDE (debit_minor, credit_minor)` para o `SUM` ser index-only scan (`analise-defesa-rfc.md` §4.5).
+- **Mitigação hoje:** índice `(account_id, id) INCLUDE (debit_minor, credit_minor)` para o `SUM` ser index-only scan.
 - **Evolução:** saldo materializado em linha **mutável e reconstruível**, atualizado na mesma transação com `UPDATE ... SET saldo = saldo + :delta WHERE saldo + :delta >= 0` (RFC §5.1). Nunca `balance_after` na `entry`.
 
 ### (e) Contas internas sem conferência de saldo no caminho da requisição
 
-- **O que é:** `reserves`, `in_transit` e `revenue` nunca são travadas nem conferidas (`_ensure_funds` só considera contas com `company_id`). Elas crescem com o volume do sistema inteiro, então o `SUM` delas é o que quebra primeiro (`analise-defesa-rfc.md` §4.5).
+- **O que é:** `reserves`, `in_transit` e `revenue` nunca são travadas nem conferidas (`_ensure_funds` só considera contas com `company_id`). Elas crescem com o volume do sistema inteiro, então o `SUM` delas é o que quebra primeiro.
 - **Por que existe:** travar uma conta tocada por toda transação serializaria o sistema (RFC §5.1 item 5).
 - **Controle relacionado:** `account_key` de conta interna é recusado com `422 RNV001034`; elas só entram por `account_code`, o que impede o cliente de movimentar o Caixa ou o Trânsito.
 - **Quando dói:** quando alguém precisar saber o saldo de `in_transit` ou `reserves` em tempo real. Hoje nada no caminho da requisição depende disso.
@@ -168,7 +170,7 @@ Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfec
   - **Acoplamento circular de disponibilidade:** o Transferências já depende do Banco (`/auth/me`, ledger); agora o `close` do Banco depende do Transferências. Sem Transferências, ninguém encerra conta (o resto do Banco segue de pé). Não há dependência circular no startup (`banco-api` não tem `depends_on` do Transferências).
   - **Lock durante HTTP:** até `TRANSFERENCIAS_TIMEOUT_SECONDS` segundos com a linha da conta travada e uma conexão do Banco presa; débitos da mesma conta esperam. Escopo limitado a uma conta que o titular está encerrando.
   - **Janela de criação de payment:** o `POST /payments` lê o status da conta no início da requisição (`/auth/me`) e o crédito do `receipt` vai para `in_transit`, uma conta interna que não toca a linha do cliente nem espera o lock. Logo um payment aceito antes do commit do `close` pode não aparecer na consulta in-flight (a linha ainda não está commitada) e a conta fecha com um payment `held`. O guard de conta `active` do `POST /payments` mitiga só quem começa depois do commit. Consequência: no settlement o crédito para a conta `closed` seria recusado pelo ledger (`RNV001005`) e o payment ficaria `held` até um refund. É o resíduo da opção B; fechar a janela exigiria o Transferências travar algo da conta durante o `POST /payments`, o que não existe hoje.
-  - **Sem índice** em `payment(account_key, status_id)` e `payout(account_key, status_id)`: a contagem faz varredura. Pedir ao Wren se o volume crescer.
+  - **Sem índice** em `payment(account_key, status_id)` e `payout(account_key, status_id)`: a contagem faz varredura. Criar o índice se o volume crescer.
 - **Bloqueio (`block`) não move dinheiro:** o saldo fica congelado na conta do titular, sem débito, como passivo do banco perante o titular. Para fundos bloqueados por fraude ou ordem judicial, o destino do dinheiro é evolução (por exemplo uma conta interna `held_funds`).
 - **Payout `pending` de conta bloqueada:** fica parado em `in_transit` até o `unblock`; o dinheiro já saiu da conta do titular e ainda não saiu do banco.
 
@@ -176,7 +178,7 @@ Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfec
 
 - **Padrão do projeto (decisão do usuário):** paginação por **cursor opaco assinado** (keyset por `id` interno, `id < before_id`). O cursor é `base64url("<id>.<HMAC-SHA256 hex>")` com o segredo `CURSOR_SECRET`; o id interno não vai em claro nem é forjável. Envelope `{"data": [...], "limit": n, "cursor": <opaco ou null>, "is_last_page": bool}`; `limit` de 1 a 100. Cursor adulterado, inventado ou malformado → `400 RNV000011`. Origem: extrato da Victoria (#18, `banco/src/utils/cursor.py`); no Transferências a cópia isolada é `src/utils/cursor.py` e a primeira rota é `GET /payments`.
 - **Por que cursor:** o offset repete ou pula linha quando entra item novo entre duas páginas; o keyset não escorrega.
-- **A alinhar:** as listagens admin da Natalia (#21) usam a **chave pública** como cursor e devem migrar para o cursor opaco assinado.
+- **Onde vale:** extrato, `GET /payments` e as listagens admin (`/admin/clients`, `/admin/companies`, `/admin/accounts`), que já migraram da chave pública para o cursor opaco assinado.
 
 ## 4. Caminho de evolução em degraus
 
@@ -195,6 +197,8 @@ Ordem sugerida: 1a e 1b já aplicados; 1d antes de ter volume real, 2 quando a c
 
 - **É decisão, não esquecimento.** A RFC §6 descarta saga, fila e processamento assíncrono de propósito: "corretude do saldo vale mais que vazão". O custo (vazão limitada por instância, acoplamento ao Banco) está escrito aqui com números.
 - **O que a escala não quebra:** o dinheiro. Chave determinística no lançamento, `UNIQUE` na entidade e `FOR UPDATE` no débito valem com 1 ou 1.000 instâncias. O pior que o volume faz é recusar ou atrasar.
-- **O limite real e honesto:** conexão presa na chamada ao Banco (20 conexões por instância, 4 pagamentos/s no pior caso de Banco travado, conta na seção 3a; o pool já falha em 3 s com `503 RNV000006`) e o resultado desconhecido no timeout, com a reconciliação ainda inexistente.
-- **O 503 é "retente com a mesma chave", não "falhou".** Por isso não guardamos `failed`: a idempotência reencontra o receipt no Banco e fecha a conta. Reconhecemos que o texto do `RNV001017` ("nada foi gravado") merece ajuste.
-- **Próximo passo:** o degrau 1 (timeout configurável, `pool_timeout` curto, `RNV000006`) já está aplicado; falta a reconciliação; degrau 2 se a medição mostrar cascata; degrau 3 só com mudança explícita da RFC.
+- **O limite real e honesto:** conexão presa na chamada ao Banco (20 conexões por instância, 4 pagamentos/s no pior caso de Banco travado, conta na seção 3a; o pool já falha em 3 s com `503 RNV000006`) e o resultado desconhecido no timeout, resolvido pelo retry ou pela reconciliação de receipt órfão, que ainda depende de agendador.
+
+- **O 503 é "retente com a mesma chave", não "falhou".** Por isso não guardamos `failed`: a idempotência reencontra o receipt no Banco e fecha a conta. Por isso o texto do `RNV001017` avisa que o resultado no Banco pode ser desconhecido.
+
+- **Próximo passo:** o degrau 1 (timeout configurável, `pool_timeout` curto, `RNV000006`) já está aplicado; a reconciliação de receipt órfão existe, falta agendar os jobs; degrau 2 se a medição mostrar cascata; degrau 3 só com mudança explícita da RFC.

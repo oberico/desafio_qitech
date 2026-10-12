@@ -4,7 +4,7 @@
 |---|---|
 | **Time** | Ramon Guimarães Cruz · Victoria Camile Bertuchi · Natalia Lugão |
 | **Data** | 12/10/2026 |
-| **Versão** | 8.0 — o que a implementação decidiu (substitui a 7.2, que fica como registro da defesa) |
+| **Versão** | 8.0 — o que a implementação decidiu (substitui a 7.2 apresentada na defesa) |
 
 ## 1. Visão geral
 
@@ -33,7 +33,7 @@ A **identidade** segue a mesma regra. O token nasce no Banco (`POST /clients`); 
 
 As chamadas entre serviços usam `INTERNAL-TOKEN` e vão quase todas do Transferências para o Banco. **Há uma exceção, consciente:** para encerrar uma conta, o Banco pergunta ao Transferências se há valores em trânsito (seção 5.5).
 
-**O payout é sempre uma saída do dinheiro para fora do banco.** Saque, pagamento de boleto e transferência (`purpose`) são rótulos do mesmo fluxo. O `destination` (JSONB) descreve um destino **externo** e nunca muda depois de gravado. O caminho no livro é o mesmo para os três: D Cliente / C Trânsito → o interbancário confirma → D Trânsito / C Caixa. Como é uma operação externa que pode falhar, a `transaction` de `payout` nasce `pending` no livro; se o repasse falha, ela continua `pending` e é desfeita por uma `reversal`. O andamento é acompanhado pelo `payout_status` no Transferências, não pelo status do livro.
+**O payout é sempre uma saída do dinheiro para fora do banco.** Saque, pagamento de boleto e transferência são rótulos do mesmo fluxo, com um `destination` externo que nunca muda depois de gravado. Como a saída pode falhar, o lançamento nasce `pending` e, se o repasse falhar, é desfeito por uma `reversal` (seção 5.4).
 
 **As contas do livro.** O livro fecha porque toda entrada e saída tem contrapartida numa conta do próprio banco:
 
@@ -70,7 +70,7 @@ Um pix de **R$ 1.000,00** com a taxa real do pix (0,99%, `fee_bps = 99`, janela 
 | 6 | 1.000,00 | 990,10 | 0 | 9,90 | 1.000,00 = 990,10 + 9,90 |
 | 7 | 9,90 | 0 | 0 | 9,90 | 9,90 = 9,90 |
 
-No fim, o banco tem em caixa exatamente o que ganhou. O resto entrou e saiu. Uma história equivalente, com vendas nos três meios, estorno e saque recusado, roda de forma executável na coleção [`rnv-ponta-a-ponta.postman_collection.json`](../docs/postman/rnv-ponta-a-ponta.postman_collection.json), que confere os saldos e a equação do livro a cada passo.
+No fim, o banco tem em caixa exatamente o que ganhou. O resto entrou e saiu. Uma história equivalente, com vendas nos três meios, estorno e saque recusado, roda de forma executável na coleção [`rnv-ponta-a-ponta.postman_collection.json`](postman/rnv-ponta-a-ponta.postman_collection.json), que confere os saldos e a equação do livro a cada passo.
 
 **Caminhos alternativos:**
 
@@ -80,330 +80,80 @@ No fim, o banco tem em caixa exatamente o que ganhou. O resto entrou e saiu. Uma
 - **Interbancário sem resposta no passo 7:** a reconciliação retenta com espera crescente (60 s, depois 120 s). Na **3ª tentativa sem resposta**, `failed` + reversal, como na recusa (seção 5.4).
 - **Encerramento com algo em trânsito no passo 8:** se houver venda `held` ou saque `pending`, o encerramento é recusado (`422 RNV001035`), mesmo com saldo zero.
 
-**Perguntas de estresse do fluxo:**
-
-- *Mil pagamentos chegando ao mesmo tempo na mesma conta?* Recebimento é **crédito** numa conta interna: só `INSERT` no livro, sem trava. A soma dá o mesmo em qualquer ordem. Seguro por construção.
-- *O job de liberação roda duas vezes?* Ele trava a linha do `payment` e relê o status: só libera o que ainda está `held`. No Banco, a chave determinística (`settlement:<payment_key>`) faz a repetição devolver o lançamento existente.
-- *Estorno e liberação disputam o mesmo pagamento?* Os dois travam a **mesma linha do `payment`** e relêem o status. O primeiro muda `held` para `refunded` ou `settled`; o segundo vê que já não é `held` e desiste.
-- *O interbancário pagou, mas a resposta se perdeu, e demos `failed`?* Com o simulador isso não acontece. Contra um banco real, antes do `failed` por timeout consultaríamos o status no destino. **Risco aceito** (seção 7).
-
 ## 3. Modelo de dados
 
-Dois bancos PostgreSQL, um por serviço, gerados por `banco/database/database.sql` e `transferencias/database/database.sql`. Os diagramas abaixo trazem **todas** as tabelas e colunas, com tipo, chaves e restrições. Convenções:
-
-- `id` `SERIAL` é a chave interna: nunca sai na resposta e nunca cruza serviço. A chave pública é um UUID v4 em `CHAR(36)` (`*_key`), a única que trafega entre serviços.
-- Dinheiro é `BIGINT` em centavos (`*_minor`). Toda data é `TIMESTAMPTZ`. Toda coluna é `NOT NULL`, salvo as marcadas como "nulo".
-- Enumeradores são **tabelas de lookup** (`enumerator` `UNIQUE`, em minúsculo) referenciadas por FK, nunca texto solto nem `ENUM` nativo.
-- Tabelas de evento (`*_status_event`) são append-only: guardam cada troca de status com motivo e instante.
-
-### Banco (livro e identidade)
+Um PostgreSQL por serviço, sem FK nem join entre eles: o Transferências guarda as chaves públicas do Banco (`company_key`, `account_key`, `transaction_key`) como valores opacos. Dinheiro é `BIGINT` em centavos, datas são `TIMESTAMPTZ`, enumeradores são tabelas de lookup e o `id` interno nunca sai na resposta. Os diagramas abaixo mostram só as entidades centrais e as colunas que carregam regra; todas as tabelas e colunas, restrições e índices estão em [`modelo-de-dados.md`](modelo-de-dados.md).
 
 ```mermaid
 erDiagram
-    client ||--|{ api_token : "autentica"
     client ||--o{ company : "e responsavel por"
-    company ||--o| account : "tem no maximo uma"
-    account_class ||--o{ account : "classifica"
-    account_status ||--o{ account : "estado atual"
-    account ||--o{ account_status_event : "historico"
-    account_status ||--o{ account_status_event : "estado registrado"
-    transaction_type ||--o{ transaction : "tipa"
-    transaction_status ||--o{ transaction : "estado atual"
-    transaction_type ||--o{ allowed_transition : "transicoes do tipo"
-    transaction_status ||--o{ allowed_transition : "de / para"
-    transaction ||--o{ transaction_status_event : "historico"
-    transaction_status ||--o{ transaction_status_event : "estado registrado"
-    transaction ||--|{ entry : "compoe 2 a 20"
+    client ||--|{ api_token : "autentica"
+    company ||--o| account : "uma conta"
+    transaction ||--|{ entry : "pernas"
     account ||--o{ entry : "lancada em"
-    transaction |o--o| transaction : "reverses_transaction_id"
-    transaction |o--o| transaction : "settles_transaction_id"
+    transaction |o--o| transaction : "settles / reverses, unicos"
 
-    account_class {
-        serial id PK
-        varchar50 enumerator UK "asset, liability, revenue"
-        timestamptz created_at
-    }
-    account_status {
-        serial id PK
-        varchar50 enumerator UK "created, active, rejected, blocked, closed"
-        timestamptz created_at
-    }
-    transaction_type {
-        serial id PK
-        varchar50 enumerator UK "receipt, payout, settlement, refund, reversal"
-        timestamptz created_at
-    }
-    transaction_status {
-        serial id PK
-        varchar50 enumerator UK "pending, settled"
-        timestamptz created_at
-    }
-    allowed_transition {
-        serial id PK
-        integer type_id FK "UK com from e to"
-        integer from_status_id FK "CHECK from diferente de to"
-        integer to_status_id FK "seed: payout pending para settled"
-        timestamptz created_at
-    }
-    client {
-        serial id PK
-        char36 client_key UK "chave publica"
-        char14 cpf UK "000.000.000-00, digitos validados"
-        varchar255 name
-        date birthdate "maior de idade em America/Sao_Paulo"
-        varchar255 email UK
-        timestamptz created_at
-    }
-    api_token {
-        serial id PK
-        char64 token_hash UK "SHA-256; o token puro sai uma vez"
-        integer client_id FK
-        timestamptz revoked_at "nulo = ativo"
-        timestamptz last_used_at "nulo"
-        timestamptz created_at
-    }
-    company {
-        serial id PK
-        char36 company_key UK "chave publica"
-        char18 cnpj UK "00.000.000/0000-00, digitos validados"
-        varchar255 legal_name
-        integer client_id FK "dono"
-        timestamptz created_at
-    }
     account {
         serial id PK "a linha que o debito trava"
-        char36 account_key UK "chave publica"
-        varchar20 code "reserves, in_transit, revenue ou business; UK parcial nas internas"
+        char36 account_key UK
+        varchar20 code "reserves, in_transit, revenue ou business"
         integer company_id FK, UK "nulo = conta interna"
-        integer class_id FK
-        integer status_id FK
-        char1 normal_balance "CHECK d ou c"
-        varchar3 currency "brl"
-        timestamptz created_at
-    }
-    account_status_event {
-        serial id PK
-        integer account_id FK
-        integer status_id FK
-        varchar255 reason "nulo; ex. reprovada no biro"
-        timestamptz event_datetime
-        timestamptz created_at
     }
     transaction {
-        serial id PK
-        char36 transaction_key UK "chave publica"
-        integer type_id FK
-        integer status_id FK "settled; payout nasce pending"
-        varchar100 idempotency_key UK "deterministica, ate 95 caracteres"
-        char64 payload_hash "SHA-256 do JSON canonico"
-        integer reverses_transaction_id FK, UK "nulo; estornada no maximo uma vez"
-        integer settles_transaction_id FK, UK "nulo; liquidada no maximo uma vez"
-        timestamptz created_at
+        char36 transaction_key UK
+        varchar100 idempotency_key UK "deterministica"
+        integer settles_transaction_id FK, UK
+        integer reverses_transaction_id FK, UK
     }
     entry {
-        serial id PK "ordena o extrato"
-        integer transaction_id FK
-        integer account_id FK
-        varchar3 currency "brl"
-        bigint debit_minor "default 0"
-        bigint credit_minor "default 0; CHECK exatamente um lado maior que 0"
-        timestamptz created_at "clock_timestamp"
-    }
-    transaction_status_event {
-        serial id PK
-        integer transaction_id FK
-        integer status_id FK
-        varchar255 reason "nulo"
-        timestamptz event_datetime
-        timestamptz created_at
+        bigint debit_minor "exatamente um lado maior que 0"
+        bigint credit_minor
     }
 ```
-
-**Restrições que carregam regra de negócio:**
-
-| Restrição | Tabela | O que garante |
-|---|---|---|
-| `ck_account_internal_or_client` | `account` | conta interna não tem empresa e tem `code` de conta interna; conta de cliente tem empresa e `code = business` |
-| `uq_account_internal_code` (índice parcial) | `account` | uma única conta `reserves`, `in_transit` e `revenue` |
-| `account_company_id_key` | `account` | uma conta por empresa, mesmo com pedidos simultâneos |
-| `ck_entry_one_side` | `entry` | cada perna é débito **ou** crédito, nunca os dois, nunca negativa |
-| `uq_transaction_idempotency_key` | `transaction` | o mesmo pedido nunca vira dois lançamentos |
-| `uq_transaction_settles` / `uq_transaction_reverses` | `transaction` | uma venda tem uma saída só: liquidada **ou** estornada, uma vez |
-
-**Índices:** `entry (account_id, id) INCLUDE (debit_minor, credit_minor)` calcula o saldo sem ler a tabela; `entry (account_id, created_at)` atende o filtro de período do extrato; `entry (transaction_id)` monta o lançamento. Uma transação não pode debitar e creditar a mesma conta (`422 RNV001037`); essa regra mora no controller, porque envolve várias linhas de `entry`.
-
-### Transferências (produto)
 
 ```mermaid
 erDiagram
-    payment_method ||--o{ payment : "versao usada na venda"
-    payment_status ||--o{ payment : "estado atual"
-    payment_status ||--o{ payment_transition : "de / para"
-    payment ||--o{ payment_status_event : "historico"
-    payment_status ||--o{ payment_status_event : "estado registrado"
-    payout_purpose ||--o{ payout : "finalidade"
-    payout_status ||--o{ payout : "estado atual"
-    payout_status ||--o{ payout_transition : "de / para"
+    payment_method ||--o{ payment : "versao usada"
     payout ||--o{ payout_attempt : "tentativas"
-    payout_result ||--o{ payout_attempt : "resultado"
-    payout ||--o{ payout_status_event : "historico"
-    payout_status ||--o{ payout_status_event : "estado registrado"
 
     payment_method {
-        serial id PK
-        varchar50 enumerator "pix, boleto, card; UK com version"
-        integer version "CHECK maior ou igual a 1; append-only"
-        integer fee_bps "CHECK 0 a 10000"
-        integer release_window_hours "CHECK 0 a 8760"
-        timestamptz created_at
-    }
-    payment_status {
-        serial id PK
-        varchar50 enumerator UK "held, settled, refunded"
-        timestamptz created_at
-    }
-    payment_transition {
-        serial id PK
-        integer from_status_id FK "UK com to; CHECK from diferente de to"
-        integer to_status_id FK "seed: held para settled ou refunded"
-        timestamptz created_at
+        varchar50 enumerator "UK com version"
+        integer version "append-only"
+        integer fee_bps
+        integer release_window_hours
     }
     payment {
-        serial id PK
-        char36 payment_key UK "chave publica"
-        char36 client_key "dono, ref ao Banco por UUID"
-        char36 company_key "ref ao Banco por UUID; UK com idempotency_key"
-        char36 account_key "conta a creditar no Banco"
-        integer method_id FK "versao do metodo na chegada"
-        integer status_id FK
-        bigint amount_minor "CHECK maior que 0"
-        integer fee_bps "SNAPSHOT; CHECK maior ou igual a 0"
-        timestamptz release_at "SNAPSHOT: chegada mais janela"
-        char36 transaction_key UK "nulo ate o receipt; ref ao livro"
-        varchar50 idempotency_key "chave do cliente"
-        char64 payload_hash "SHA-256 de company_key, amount_minor, method"
-        timestamptz created_at
-    }
-    payment_status_event {
-        serial id PK
-        integer payment_id FK
-        integer status_id FK
-        varchar255 reason "nulo; settlement ou refund"
-        timestamptz event_datetime
-        timestamptz created_at
-    }
-    payout_purpose {
-        serial id PK
-        varchar50 enumerator UK "withdrawal, bill_payment, transfer"
-        timestamptz created_at
-    }
-    payout_status {
-        serial id PK
-        varchar50 enumerator UK "pending, settled, failed"
-        timestamptz created_at
-    }
-    payout_transition {
-        serial id PK
-        integer from_status_id FK "UK com to; CHECK from diferente de to"
-        integer to_status_id FK "seed: pending para settled ou failed"
-        timestamptz created_at
-    }
-    payout_result {
-        serial id PK
-        varchar50 enumerator UK "confirmed, rejected, timeout"
-        timestamptz created_at
+        char36 payment_key UK
+        char36 account_key "ref opaca ao Banco"
+        integer fee_bps "snapshot"
+        timestamptz release_at "snapshot"
+        varchar50 idempotency_key "UK com company_key"
     }
     payout {
-        serial id PK
-        char36 payout_key UK "chave publica"
-        char36 company_key "ref ao Banco; UK com idempotency_key"
-        char36 account_key "conta debitada no Banco"
-        integer purpose_id FK
-        jsonb destination "destino externo, imutavel, ate 4096 bytes"
-        integer status_id FK
-        bigint amount_minor "CHECK maior que 0"
-        timestamptz last_attempt_at "nulo; base do backoff"
-        varchar255 failure_reason "nulo; interbank_refused ou interbank_timeout"
-        char36 transaction_key UK "nulo ate o debito; ref ao livro"
-        varchar50 idempotency_key "chave do cliente"
-        char64 payload_hash "SHA-256 de account_key, purpose, amount_minor, destination"
-        timestamptz created_at
+        char36 payout_key UK
+        jsonb destination "imutavel"
+        timestamptz last_attempt_at "base do backoff"
+        varchar50 idempotency_key "UK com company_key"
     }
     payout_attempt {
-        serial id PK
-        integer payout_id FK "UK com attempt_number"
-        integer result_id FK
-        integer attempt_number "CHECK maior que 0; o COUNT conta as tentativas"
-        timestamptz created_at
-    }
-    payout_status_event {
-        serial id PK
-        integer payout_id FK
-        integer status_id FK
-        varchar255 reason "nulo; settlement ou reversal"
-        timestamptz event_datetime
-        timestamptz created_at
+        integer attempt_number "UK com payout_id"
     }
 ```
 
-**Restrições que carregam regra de negócio:** `uq_payment_idempotency` e `uq_payout_idempotency` (`UNIQUE(company_key, idempotency_key)`) são a idempotência do produto; `UNIQUE(enumerator, version)` versiona a tarifa sem `UPDATE`; `UNIQUE(payout_id, attempt_number)` impede tentativa dupla na corrida entre runs do reconcile.
-
-**Índices:** `payment (status_id, release_at)` encontra as vendas vencidas para o job de liberação; `payout (status_id, last_attempt_at)` encontra os saques acionáveis para a reconciliação; `payment (company_key, created_at)` e `payout (company_key, created_at)` atendem as consultas por empresa; `payout_attempt (payout_id)` deriva a fase do saque.
-
-### Chaves que cruzam os serviços
-
-Nenhuma FK atravessa serviço. As colunas abaixo guardam o UUID público do outro lado como valor opaco: nunca há join entre os bancos.
-
-| Transferências | Aponta para (Banco) | Quem grava |
-|---|---|---|
-| `payment.client_key` | `client.client_key` | o `GET /auth/me` do token que criou a venda |
-| `payment.company_key`, `payout.company_key` | `company.company_key` | o corpo do pedido (venda) ou a conta (saque), conferidos no `/auth/me` |
-| `payment.account_key`, `payout.account_key` | `account.account_key` | a conta da empresa, vinda do `/auth/me` |
-| `payment.transaction_key` | `transaction.transaction_key` do `receipt` | a resposta do `POST /ledger/transactions` |
-| `payout.transaction_key` | `transaction.transaction_key` do `payout` | idem |
-
-No sentido inverso, o Banco só conhece o Transferências pela `idempotency_key` dos lançamentos, que é derivada das chaves do produto (`receipt:<company_key>:<chave>`, `settlement:<payment_key>`, `reversal:<payout_key>` e as demais da seção 5.2).
+A `entry` é append-only e não tem `balance_after`: o saldo sai de `SUM(credit_minor) − SUM(debit_minor)` pelo índice `(account_id, id) INCLUDE (debit_minor, credit_minor)`. Uma transação não pode debitar e creditar a mesma conta (`422 RNV001037`).
 
 ## 4. Rotas e autorização
 
-O contrato completo de cada rota está em [`rotas.md`](rotas.md); os códigos de erro, em [`catalogo-de-erros.md`](catalogo-de-erros.md); o simulador interbancário, em [`mocks-externos.md`](mocks-externos.md). Visão geral:
+O contrato de cada rota (o que recebe, devolve e quais erros pode dar) está em [`rotas.md`](rotas.md); os códigos de erro, em [`catalogo-de-erros.md`](catalogo-de-erros.md); o simulador interbancário, em [`mocks-externos.md`](mocks-externos.md). Aqui fica só quem conversa com quem e como cada rota autoriza:
 
 ```mermaid
 flowchart LR
-    LOJ["Lojista"]
-    OPS["Operador / jobs"]
-    subgraph BANCO["Banco - livro e identidade"]
-        R1["POST /clients - publico, emite token"]
-        R2["POST /companies, GET /companies/key"]
-        R3["POST /companies/key/accounts - biro"]
-        R4["GET /accounts/key, /balance, /statement"]
-        R5["POST /accounts/key/close"]
-        L1["POST /ledger/transactions - interno"]
-        L2["GET /internal/ledger/receipts - recebimentos em aberto"]
-        A1["GET /auth/me - interno"]
-        B1["POST /internal/accounts/key/block e /unblock"]
-        AD1["GET /admin/clients, companies, accounts, internal-accounts"]
-    end
-    subgraph TRANSF["Transferencias - produto"]
-        P1["POST /payments - idempotente; GET /payments e /payments/key"]
-        P2["POST /payments/key/refund"]
-        P3["POST /payouts - idempotente; GET /payouts/key"]
-        J1["POST /internal/settlements - job"]
-        J2["POST /internal/payouts/reconcile - job"]
-        J3["POST /internal/receipts/reconcile - job"]
-        M1["PUT /internal/payment-methods/method"]
-        F1["GET /internal/accounts/key/in-flight"]
-        AD2["GET /admin/payments"]
-    end
-    LOJ --> R1 & R2 & R3 & R4 & R5
-    LOJ --> P1 & P2 & P3
-    OPS --> J1 & J2 & J3 & M1 & B1 & AD1 & AD2
-    P1 & P2 & P3 -->|"INTERNAL-TOKEN"| A1
-    P1 & P2 & P3 & J1 & J2 & J3 -->|"INTERNAL-TOKEN"| L1
-    J3 -->|"INTERNAL-TOKEN"| L2
-    R5 -->|"INTERNAL-TOKEN"| F1
-    J2 --> MOCK["external-mocks: interbancario"]
-    R3 --> BIRO["Mock do biro, dentro do Banco"]
+    LOJ["Lojista"] -->|"Bearer token"| B["Banco"]
+    LOJ -->|"Bearer token"| T["Transferencias"]
+    OPS["Operador e jobs"] -->|"INTERNAL-TOKEN ou ADMIN_TOKEN"| B & T
+    T -->|"/auth/me, /ledger/transactions, /internal/ledger/receipts"| B
+    B -->|"/internal/accounts/key/in-flight, so no encerramento"| T
+    T -->|"saques"| M["external-mocks: interbancario"]
 ```
 
 **Quatro acessos.** Público (`/`, `/health_check`, `POST /clients`); cliente (`Authorization: Bearer <token>`, `401 RNV000003` se faltar ou for inválido); serviço (`/internal/*`, `/ledger/*`, `/auth/*` com `INTERNAL-TOKEN`, `403 RNV000002`); admin (`/admin/*` com o token de administrador da env `ADMIN_TOKEN`; token de cliente recebe `403 RNV001027`).
@@ -421,9 +171,7 @@ flowchart LR
 
 O birô valida a empresa **uma vez, na abertura da conta**. A reprovação não tem código próprio: a conta nasce `rejected`, que é um estado "não active" e cai em `RNV001031` na escrita. Uma empresa reprovada não reabre conta.
 
-**Erros.** Formato único `{title, description, translation, code}`, com `description` em inglês e `translation` em português. `RNV000xxx` são genéricos, `RNV001xxx` são de negócio. Erros de formato têm um código por tipo (campo ausente, campo não permitido, tipo ou formato, fora do limite, cursor, `Idempotency-Key`), e a tradução cita o campo e o motivo. O código identifica o erro, não o serviço que o levanta: um saldo insuficiente detectado pelo Banco chega ao lojista pelo Transferências com o mesmo `RNV001006`.
-
-**Paginação.** As listas (`GET /payments`, extrato, rotas admin) usam keyset do mais novo para o mais antigo, sem `COUNT`, com **cursor opaco assinado** (HMAC-SHA256 com `CURSOR_SECRET`). O `id` interno nunca sai em claro, e cursor adulterado ou inventado é recusado (`400 RNV000011`).
+**Erros e paginação.** Todo erro tem o formato `{title, description, translation, code}`, com código estável que identifica o erro, não o serviço: um saldo insuficiente detectado pelo Banco chega ao lojista pelo Transferências com o mesmo `RNV001006`. As listas usam keyset do mais novo para o mais antigo com cursor opaco assinado (HMAC), para que o `id` interno nunca saia em claro.
 
 ## 5. Desafios
 
@@ -527,21 +275,11 @@ Quem sabe o que está em trânsito é o Transferências. Por isso o Banco, ao en
 
 ### 5.6 Limites de valor
 
-Todo limite é validado por JSON Schema na entrada, antes de qualquer consulta, para que um valor extremo vire `400` ou `422` e nunca um `500`:
-
-| Campo | Limite | Por quê |
-|---|---|---|
-| `amount_minor`, `debit_minor`, `credit_minor` | 1 a 9.223.372.036.854.775.807 | o teto do `BIGINT`; acima disso o banco de dados estouraria |
-| `entries` de uma transação | 2 a 20 | uma transação real tem no máximo 4 pernas |
-| `destination` do payout | não vazio, até 4096 bytes | é JSONB livre; o limite protege a tabela |
-| `fee_bps` | 0 a 10000 | mais de 100% faria a tarifa passar do valor da venda |
-| `release_window_hours` | 0 a 8760 | um ano; protege o cálculo de `release_at` |
-| `Idempotency-Key` | 1 a 50 caracteres | cabe no composto de 95 do livro |
+Todo valor tem teto validado por JSON Schema na entrada, para que um valor extremo vire `400` ou `422` e nunca um `500`: valores até o teto do `BIGINT`, de 2 a 20 pernas por lançamento, `destination` até 4096 bytes, `fee_bps` até 10000 e janela até 8760 h. A tabela completa está em [`rotas.md`](rotas.md).
 
 ## 6. Tradeoffs e alternativas descartadas
 
 - **Coluna `balance_after` na `entry`** — descartada. É um valor dependente de ordem, calculado por *read-modify-write* e gravado numa linha imutável: um *lost update* fica cravado no livro para sempre.
-- **Lock na tabela `entry`** — impossível, porque append-only não tem linha para travar, e o lock na tabela inteira serializaria contas sem relação.
 - **Saga, fila ou processamento assíncrono** — descartados conscientemente. Síncrono com idempotência, porque corretude do saldo vale mais que vazão.
 - **Banco consultando o Transferências no encerramento** — aceito, como única exceção à direção das chamadas. Duplicar no Banco o estado das vendas e saques seria pior que uma chamada fail-closed numa operação rara.
 - **Cliente com conta em outro banco** — descartado. Era complexidade sem ganho conceitual; a saída do dinheiro existe, com o destino dado na requisição.
@@ -549,11 +287,6 @@ Todo limite é validado por JSON Schema na entrada, antes de qualquer consulta, 
 - **Duas colunas (`debit_minor`/`credit_minor`) em vez de um `amount` com sinal** — mantidas. O `CHECK` garante exatamente uma preenchida e nenhuma negativa.
 - **Tabela de idempotência genérica** — descartada em favor da chave na própria entidade. O custo é o retry refletir o estado atual em vez de uma foto da resposta.
 - **`retry_count` no `payout`** — descartado. O número de tentativas já está nas linhas de `payout_attempt`; um contador mutável poderia divergir.
-- **`UPDATE` na tabela de tarifas** — descartado. A tarifa é versionada em linhas novas, para que o snapshot aponte para algo que não muda.
-- **Paginação por offset ou pela chave pública** — descartada. Offset pula ou repete itens quando entra um registro novo entre páginas; a chave pública como cursor vazaria a ordem interna. O cursor é opaco e assinado.
-- **Códigos de erro com prefixo por serviço** — descartados. O código identifica o erro, não quem o levanta: um erro repassado de um serviço para o outro mantém o mesmo código, e o cliente não precisa conhecer a topologia interna.
-- **`as_of` no corpo dos jobs** — aceito como ferramenta de teste e operação, restrito a `INTERNAL-TOKEN`. Um relógio injetável por configuração seria a evolução.
-- **Simuladores num container à parte** — o interbancário mora no `external-mocks`, sem banco e sem autenticação, chamado só pelo conector do Transferências. O birô ainda é um mock dentro do Banco e migra numa fatia própria.
 
 ## 7. Riscos aceitos e limites conhecidos
 
@@ -568,9 +301,7 @@ O detalhamento, com números e caminho de evolução, está em [`limites-e-evolu
 | **Saque `pending` com conta bloqueada** | a reversal é recusada e o saque fica parado até o desbloqueio | o run o reporta em `pending` | alerta e limite de idade |
 | **Jobs sem agendador** | liberação e reconciliação dependem de alguém chamar a rota | `as_of` para testar | agendador e fatiamento por empresa |
 
-## 8. Histórico
-
-### Problemas resolvidos na defesa (v7.2)
+## 8. Problemas apontados na defesa da v7.2
 
 | O que os leads apontaram | O que mudou |
 |---|---|
@@ -583,24 +314,3 @@ O detalhamento, com números e caminho de evolução, está em [`limites-e-evolu
 | Micro-centavos da taxa | Arredondamento para cima, com o invariante `fee + net = amount` |
 | "A taxa é feature ou tabela?" | Tabela por meio de pagamento, com snapshot no `payment` |
 | Birô validando a cada etapa | Valida a empresa uma vez, na abertura da conta |
-
-### O que a implementação decidiu (v7.2 → v8.0)
-
-| Tema | v7.2 | v8.0 |
-|---|---|---|
-| Direção entre serviços | só Transferências → Banco | também Banco → Transferências, uma rota, no encerramento (5.5) |
-| Encerramento de conta | não especificado | saldo zero e nada em trânsito, fail-closed |
-| Bloqueio | não especificado | rota de serviço; congela a escrita, não move dinheiro |
-| Autorização | `403` próprio para empresa não validada; saldo e extrato exigem conta `active` | sem código próprio (a conta nasce `rejected`); leitura passa com a conta `blocked` ou `closed` |
-| Tarifa | tabela com valor vigente | versionada, append-only, com rota de alteração; o `payment` aponta para a versão |
-| Reconciliação do payout | retentativa com espera crescente | fase derivada da `payout_attempt`, backoff de 60 s e 120 s, teto por run, `failed` só com reversal |
-| Relógio dos jobs | "o relógio" | `as_of` opcional, só com `INTERNAL-TOKEN` |
-| Simuladores | mocks | interbancário em container próprio (`external-mocks`); birô dentro do Banco |
-| Limites de valor | não especificados | tabela da seção 5.6 |
-| Paginação | não especificada | keyset com cursor opaco assinado |
-| Erros | catálogo `RNV` | um código por tipo de erro de formato, tradução com campo e motivo |
-| Administração | não especificada | rotas `/admin/*` com token próprio, incluindo a equação do livro |
-| Saldo | `balance_minor` | também `balance_formatted` (`R$ 1.049,11`), calculado na resposta |
-| Recebimento sem venda | risco sem mitigação | job de reconciliação com carência, estorno e `409 RNV001038` no retry tardio (5.4) |
-| Mesma conta nos dois lados | aceita | recusada (`422 RNV001037`) |
-| Conta de cliente no livro | `code` só nas internas | `code = business`; uma conta por empresa garantida por `UNIQUE` |

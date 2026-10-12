@@ -70,13 +70,14 @@ Python 3.11 · FastAPI · SQLAlchemy · PostgreSQL · Docker Compose · pytest �
 
 ## Documentação
 
-As decisões e o raciocínio do projeto estão na [RFC](internal_docs/rfc-rnv-v8.0.md): arquitetura, caminho do dinheiro, concorrência, idempotência, tradeoffs e riscos aceitos. Os contratos:
+As decisões e o raciocínio do projeto estão na [RFC](docs/rfc-rnv-v8.0.md): arquitetura, caminho do dinheiro, concorrência, idempotência, tradeoffs e riscos aceitos. Os contratos:
 
-- [Rotas](internal_docs/rotas.md): o contrato de cada endpoint.
-- [Catálogo de erros](internal_docs/catalogo-de-erros.md): todos os códigos `RNV`.
-- [Mocks externos](internal_docs/mocks-externos.md): o contrato do simulador interbancário.
-- [Limites e evolução](internal_docs/limites-e-evolucao.md): o que o projeto não resolve hoje e como evoluiria.
-- [Checkup de testes](internal_docs/checkup-de-testes.md): o mapa da suíte, os testes obrigatórios e as lacunas conhecidas.
+- [Rotas](docs/rotas.md): o contrato de cada endpoint.
+- [Catálogo de erros](docs/catalogo-de-erros.md): todos os códigos `RNV`.
+- [Mocks externos](docs/mocks-externos.md): o contrato do simulador interbancário.
+- [Limites e evolução](docs/limites-e-evolucao.md): o que o projeto não resolve hoje e como evoluiria.
+- [Modelo de dados](docs/modelo-de-dados.md): todas as tabelas e colunas dos dois bancos, com restrições e índices.
+- [Checkup de testes](docs/checkup-de-testes.md): o mapa da suíte, os testes obrigatórios e as lacunas conhecidas.
 
 ## Time
 

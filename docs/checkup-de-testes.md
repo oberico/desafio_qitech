@@ -11,7 +11,7 @@ Retrato da suíte em **2026-10-12**, com a reconciliação de recebimento sem ve
 | external-mocks | 36 | 0 | 0 |
 | **Total** | **864** | **15** | **14** |
 
-Além da suíte, a coleção [`docs/postman/rnv-ponta-a-ponta.postman_collection.json`](../docs/postman/rnv-ponta-a-ponta.postman_collection.json) roda a história completa (cadastro → vendas → estorno → liberação → saques → encerramento → auditoria) com 40 requisições e 66 asserções, inclusive os saldos em cada passo e a equação do livro.
+Além da suíte, a coleção [`docs/postman/rnv-ponta-a-ponta.postman_collection.json`](postman/rnv-ponta-a-ponta.postman_collection.json) roda a história completa (cadastro → vendas → estorno → liberação → saques → encerramento → auditoria) com 40 requisições e 66 asserções, inclusive os saldos em cada passo e a equação do livro.
 
 **Como rodar** (stack de pé com `docker compose up -d`, venv da raiz ativo):
 
