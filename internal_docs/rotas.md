@@ -44,7 +44,8 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 
 **`GET /accounts/{account_key}/balance`** (cliente)
 
-- `200 {"account_key", "balance_minor", "currency"}`. O saldo é derivado do ledger (`SUM(credit_minor) - SUM(debit_minor)` das `entry` da conta), nunca armazenado.
+- `200 {"account_key", "balance_minor", "balance_formatted", "currency"}`. O saldo é derivado do ledger (`SUM(credit_minor) - SUM(debit_minor)` das `entry` da conta), nunca armazenado.
+- `balance_formatted` é o mesmo saldo em reais, para leitura humana: `"R$ 1.049,11"` (prefixo `R$`, ponto no milhar, vírgula nos centavos, negativo como `"-R$ 10,00"`). É calculado na resposta com aritmética inteira, nunca gravado; o valor de referência continua sendo `balance_minor`.
 - Leitura passa com a conta `blocked` ou `closed` (a consulta não exige conta `active`).
 - Erros: `401 RNV000003` sem token; `404 RNV001021` para conta inexistente ou de outro cliente (IDOR).
 
@@ -110,15 +111,20 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 
 ```json
 {
-  "reserves_minor": 0,
+  "reserves_minor": 508900,
+  "reserves_formatted": "R$ 5.089,00",
   "in_transit_minor": 0,
-  "revenue_minor": 0,
+  "in_transit_formatted": "R$ 0,00",
+  "revenue_minor": 508900,
+  "revenue_formatted": "R$ 5.089,00",
   "clients_total_minor": 0,
+  "clients_total_formatted": "R$ 0,00",
   "equation_ok": true
 }
 ```
 
 - `reserves_minor`: saldo da conta `reserves` (ativo, o dinheiro que o banco tem). `in_transit_minor`: saldo de `in_transit` (passivo). `revenue_minor`: saldo de `revenue` (receita, as tarifas). `clients_total_minor`: soma dos saldos de todas as contas de empresa.
+- Cada `*_formatted` é o total ao lado em reais, no mesmo formato de `balance_formatted` (calculado na resposta, nunca gravado).
 - `equation_ok` é `true` quando `reserves_minor == in_transit_minor + clients_total_minor + revenue_minor`. Se vier `false`, o livro está inconsistente.
 - Erros: `401 RNV000003`, `403 RNV001027`. Não há `400` (sem parâmetros).
 

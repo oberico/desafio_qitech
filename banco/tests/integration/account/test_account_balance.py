@@ -1,5 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
+
 from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.random_generator import RandomGenerator
 
@@ -54,3 +56,30 @@ class TestAccountBalance:
         assert status == 200
         for internal_field in INTERNAL_FIELDS:
             assert internal_field not in response
+
+    def test_new_account_has_zero_formatted_balance(self, accounts, active_account, client_token):
+        status, response = accounts.get_balance(active_account, client_token)
+
+        assert status == 200
+        assert response["balance_formatted"] == "R$ 0,00"
+
+    @pytest.mark.parametrize(
+        "amount, formatted",
+        [
+            (5, "R$ 0,05"),
+            (10000, "R$ 100,00"),
+            (104911, "R$ 1.049,11"),
+            (123456789, "R$ 1.234.567,89"),
+        ],
+        ids=["cents_only", "hundreds", "thousands", "millions"],
+    )
+    def test_formatted_balance_shows_the_amount_in_reais(
+        self, accounts, active_account, client_token, credit_account, amount, formatted
+    ):
+        credit_account(active_account, amount)
+
+        status, response = accounts.get_balance(active_account, client_token)
+
+        assert status == 200
+        assert response["balance_minor"] == amount
+        assert response["balance_formatted"] == formatted
