@@ -25,7 +25,7 @@ class TestLedgerAmountLimits:
         )
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000010"
 
     @pytest.mark.parametrize("amount", [BIGINT_MAX + 1, 10**30])
     def test_refuses_credit_above_bigint(self, ledger, amount):
@@ -37,7 +37,7 @@ class TestLedgerAmountLimits:
         )
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000010"
 
     @pytest.mark.parametrize("amount", [BIGINT_MAX + 1, 10**30])
     def test_refuses_balanced_entries_above_bigint(self, ledger, amount):
@@ -49,7 +49,7 @@ class TestLedgerAmountLimits:
         )
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000010"
 
     def test_accepts_exact_bigint_limit(self, ledger):
         payload = PayloadGenerator.create_ledger_transaction_payload(
@@ -67,7 +67,7 @@ class TestLedgerEntriesLimit:
         payload = PayloadGenerator.create_ledger_transaction_payload(entries=entries_with_total(MAX_ENTRIES + 1))
         status, response = ledger.post_transaction(payload, RandomGenerator.uuid())
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000010"
 
     def test_accepts_exactly_max_entries(self, ledger):
         payload = PayloadGenerator.create_ledger_transaction_payload(entries=entries_with_total(MAX_ENTRIES))

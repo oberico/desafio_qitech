@@ -5,7 +5,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import TimeoutError as ConnectionPoolTimeout
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from errors import InvalidSchema, MethodNotAllowed, NotFoundRoute, QIException, ServiceBusy
+from constants import IDEMPOTENCY_KEY_MAX_LENGTH
+from errors import InvalidIdempotencyKey, InvalidSchema, MethodNotAllowed, NotFoundRoute, QIException, ServiceBusy
 from errors.handlers import qi_exception_to_response
 from middlewares import (
     register_admin_auth_middleware,
@@ -29,8 +30,10 @@ def handle_qi_exception(request: Request, exception: QIException) -> JSONRespons
 
 def handle_request_validation(request: Request, exception: RequestValidationError) -> JSONResponse:
     error = exception.errors()[0]
-    location = ".".join(str(part) for part in error["loc"])
-    return qi_exception_to_response(InvalidSchema(f"{location}: {error['msg']}"))
+    reason = f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+    if tuple(error["loc"][:2]) == ("header", "Idempotency-Key"):
+        return qi_exception_to_response(InvalidIdempotencyKey(reason, IDEMPOTENCY_KEY_MAX_LENGTH))
+    return qi_exception_to_response(InvalidSchema(reason))
 
 
 def handle_pool_timeout(request: Request, exception: ConnectionPoolTimeout) -> JSONResponse:

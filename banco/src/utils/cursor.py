@@ -4,7 +4,7 @@ import hashlib
 import hmac
 
 from constants import CURSOR_SECRET
-from errors.custom_errors import InvalidSchema
+from errors.custom_errors import InvalidCursor
 
 
 def encode_cursor(entry_id: int) -> str:
@@ -16,9 +16,9 @@ def decode_cursor(cursor: str) -> int:
     try:
         payload, signature = base64.urlsafe_b64decode(cursor.encode()).decode().split(".")
     except (binascii.Error, UnicodeDecodeError, ValueError):
-        raise InvalidSchema("cursor: invalid cursor")
+        raise InvalidCursor()
     if not payload.isdigit() or not hmac.compare_digest(signature, _sign(payload)):
-        raise InvalidSchema("cursor: invalid cursor")
+        raise InvalidCursor()
     return int(payload)
 
 

@@ -82,13 +82,13 @@ class TestAdminClients:
     def test_refuses_invalid_limit(self, admin, admin_token, limit):
         status, response = admin.get(ROUTE, admin_token, {"limit": limit})
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000009"
 
     @pytest.mark.parametrize("cursor", [RandomGenerator.uuid(), "cursor-inventado", ""], ids=["public_key", "made_up", "empty"])
     def test_refuses_invalid_cursor(self, admin, admin_token, cursor):
         status, response = admin.get(ROUTE, admin_token, {"cursor": cursor})
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000011"
 
     def test_refuses_tampered_cursor(self, admin, admin_token, clients):
         create_clients(clients, 2)
@@ -97,12 +97,12 @@ class TestAdminClients:
         tampered = ("B" if cursor[0] == "A" else "A") + cursor[1:]
         status, response = admin.get(ROUTE, admin_token, {"limit": 1, "cursor": tampered})
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000011"
 
     def test_refuses_unknown_query_parameter(self, admin, admin_token):
         status, response = admin.get(ROUTE, admin_token, {"pagina": 2})
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000008"
 
     def test_unknown_parameter_error_points_to_the_query(self, admin, admin_token):
         status, response = admin.get(ROUTE, admin_token, {"pagina": 2})

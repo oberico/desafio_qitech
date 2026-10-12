@@ -8,6 +8,7 @@ class TestAccountBlockConflicts:
 
         assert status == 409
         assert response["code"] == "RNV001009"
+        assert response["translation"] == "A conta está bloqueada, por isso esta operação não é permitida."
 
         status, response = accounts.get_account(blocked_account, client_token)
         assert response["status"] == "blocked"
@@ -20,6 +21,7 @@ class TestAccountBlockConflicts:
 
         assert status == 409
         assert response["code"] == "RNV001009"
+        assert response["translation"] == "A conta está encerrada, por isso esta operação não é permitida."
 
         status, response = accounts.get_account(active_account, client_token)
         assert response["status"] == "closed"
@@ -31,6 +33,7 @@ class TestAccountBlockConflicts:
 
         assert status == 409
         assert response["code"] == "RNV001009"
+        assert response["translation"] == "A conta está reprovada, por isso esta operação não é permitida."
 
         status, response = accounts.get_account(account_key, client_token)
         assert response["status"] == "rejected"

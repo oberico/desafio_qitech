@@ -3,6 +3,7 @@ from fastapi import status as http_status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
+from constants import IDEMPOTENCY_KEY_MAX_LENGTH
 from controllers import PaymentController
 from database import get_context
 
@@ -12,7 +13,7 @@ class PaymentResource:
         self,
         request: Request,
         payload: dict = Body(...),
-        idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1, max_length=50),
+        idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1, max_length=IDEMPOTENCY_KEY_MAX_LENGTH),
     ) -> JSONResponse:
         controller = PaymentController(get_context().session)
         payment, created = controller.create(payload, idempotency_key, request.state.client_key, request.state.companies)

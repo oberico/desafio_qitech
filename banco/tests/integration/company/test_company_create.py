@@ -10,14 +10,14 @@ ERROR_FIELDS = {"title", "description", "translation", "code"}
 
 class TestCompanyCreate:
     @pytest.mark.parametrize(
-        "body",
-        [{}, PayloadGenerator.create_company_payload(unexpected=1)],
+        "body, code",
+        [({}, "RNV000007"), (PayloadGenerator.create_company_payload(unexpected=1), "RNV000008")],
         ids=["empty_body", "unknown_field"],
     )
-    def test_refuses_invalid_body(self, companies, client_token, body):
+    def test_refuses_invalid_body(self, companies, client_token, body, code):
         status, response = companies.post_company(body, client_token)
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == code
 
     @pytest.mark.parametrize("field", ["cnpj", "legal_name"])
     def test_refuses_missing_field(self, companies, client_token, field):
@@ -25,18 +25,19 @@ class TestCompanyCreate:
         del payload[field]
         status, response = companies.post_company(payload, client_token)
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000007"
+        assert response["translation"] == f"Campo obrigatório ausente: {field}."
 
     @pytest.mark.parametrize(
-        "field, value",
+        "field, value, code",
         [
-            ("cnpj", 11222333000181),
-            ("cnpj", "11222333000181"),
-            ("cnpj", "529.982.247-25"),
-            ("legal_name", None),
-            ("legal_name", ""),
-            ("legal_name", "   "),
-            ("legal_name", "a" * 256),
+            ("cnpj", 11222333000181, "RNV000009"),
+            ("cnpj", "11222333000181", "RNV000009"),
+            ("cnpj", "529.982.247-25", "RNV000009"),
+            ("legal_name", None, "RNV000009"),
+            ("legal_name", "", "RNV000010"),
+            ("legal_name", "   ", "RNV000009"),
+            ("legal_name", "a" * 256, "RNV000010"),
         ],
         ids=[
             "cnpj_as_number",
@@ -48,11 +49,12 @@ class TestCompanyCreate:
             "legal_name_256_characters",
         ],
     )
-    def test_refuses_malformed_field(self, companies, client_token, field, value):
+    def test_refuses_malformed_field(self, companies, client_token, field, value, code):
         payload = PayloadGenerator.create_company_payload(**{field: value})
         status, response = companies.post_company(payload, client_token)
         assert status == 400, f"o campo '{field}' aceitou o valor {value!r}"
-        assert response["code"] == "RNV000001"
+        assert response["code"] == code
+        assert field in response["translation"]
 
     def test_schema_error_description_names_the_offending_field(self, companies, client_token):
         payload = PayloadGenerator.create_company_payload(cnpj="11222333000181")

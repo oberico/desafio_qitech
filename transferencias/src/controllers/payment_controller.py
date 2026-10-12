@@ -43,7 +43,7 @@ class PaymentController(BaseController):
         account_key = self._authorized_account_key(payload["company_key"], companies)
 
         if not 0 < payload["amount_minor"] <= MAX_AMOUNT_MINOR:
-            raise InvalidAmount(payload["amount_minor"])
+            raise InvalidAmount(payload["amount_minor"], MAX_AMOUNT_MINOR)
 
         method = self.payment_repository.get_method(payload["method"])
         status = self.payment_repository.get_status(PaymentStatus.HELD)

@@ -5,7 +5,7 @@ from connectors import BankConnector, InterbankConnector
 from connectors.interbank_connector import CONFIRMED, REJECTED, TIMEOUT
 from constants import PAYOUT_BACKOFF_BASE_SECONDS, PAYOUT_MAX_ATTEMPTS, PAYOUT_MAX_PER_RUN, SCHEMAS_DIR
 from controllers.base_controller import BaseController
-from errors import BankUnavailable, InvalidSchema
+from errors import BankUnavailable, InvalidFormat
 from models import Payout, PayoutAttempt, PayoutStatus, PayoutStatusEvent
 from repositories import PayoutRepository, PayoutTransitionRepository
 from utils.schema_handler import validate_json
@@ -175,4 +175,4 @@ class PayoutReconcileController(BaseController):
         try:
             return datetime.fromisoformat(payload["as_of"])
         except ValueError as error:
-            raise InvalidSchema("as_of: not a valid ISO 8601 instant") from error
+            raise InvalidFormat("as_of", "as_of: not a valid ISO 8601 instant", "esperado data e hora ISO 8601 com fuso") from error

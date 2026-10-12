@@ -70,6 +70,7 @@ class TestLedgerSettlement:
         status, response = ledger.post_transaction(second, RandomGenerator.uuid())
         assert status == 409
         assert response["code"] == "RNV001014"
+        assert response["translation"] == f"A transação {payout_key} já foi liquidada."
 
     def test_refuses_reversing_settled_payout(self, ledger):
         payout_key = ledger.create_transaction("payout")
@@ -104,6 +105,7 @@ class TestLedgerSettlement:
         status, response = ledger.post_transaction(settlement, RandomGenerator.uuid())
         assert status == 409
         assert response["code"] == "RNV001014"
+        assert response["translation"] == f"A transação {payout_key} já foi estornada."
 
     def test_concurrent_settlements_settle_payout_once(self, ledger):
         payout_key = ledger.create_transaction("payout")

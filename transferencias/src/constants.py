@@ -25,3 +25,4 @@ SCHEMAS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schemas"
 BYPASS_ENDPOINTS = ["/", "/health_check"]
 INTERNAL_ROUTE_PREFIX = "/internal/"
 ADMIN_ROUTE_PREFIX = "/admin/"
+IDEMPOTENCY_KEY_MAX_LENGTH = 50
