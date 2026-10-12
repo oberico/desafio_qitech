@@ -132,6 +132,33 @@ Erros:
 | 1 | POST | `/payouts` | cliente | Saída externa (saque/boleto/transferência); `destination` imutável; debita a conta. |
 | 2 | GET | `/payouts/{payout_key}` | cliente | Consulta saque; IDOR → `404 RNV001032`. |
 
+**`POST /payouts` — contrato completo.**
+
+- **Acesso:** cliente (`Authorization`). Header `Idempotency-Key` obrigatório (1 a 50 caracteres), como no `POST /payments`.
+- **Corpo** (JSON Schema na porta, sem campo extra): `account_key` (UUID da conta do cliente), `purpose` (`withdrawal`, `bill_payment` ou `transfer`), `amount_minor` (inteiro) e `destination` (objeto livre, **não vazio**, no máximo 4096 bytes serializado). Não há campo obrigatório por `purpose`. `destination.scenario` é opcional (`confirm`, `refuse`, `timeout`, `flaky`) e é lido só pelo mock interbancário na reconciliação. `company_key` **não** vai no corpo: sai da conta.
+- **Resposta `201`** (novo) ou **`200`** (retry): `{payout_key, company_key, account_key, purpose, destination, status, amount_minor, failure_reason, transaction_key, attempts, last_attempt_at}`. `status` nasce `pending`; `attempts` é o `COUNT` de `payout_attempt`; `last_attempt_at` é `null` até a primeira tentativa. O `destination` é gravado como enviado e **nunca muda**.
+- **Autorização:** a `account_key` precisa ser de uma empresa do cliente (senão `404 RNV001021`, sem distinguir inexistente de alheia) e estar `active` (senão `403 RNV001031`). `RNV001030` não se aplica aqui: a conta é identificada pela `account_key`, e empresa sem conta nunca tem uma.
+- **Processamento:** o `INSERT` do `payout` (com `idempotency_key` e `payload_hash`, `UNIQUE(company_key, idempotency_key)`) é a primeira escrita. Depois o Banco recebe o lançamento tipo `payout`, `pending`, chave `payout:<company_key>:<chave>`: D conta do cliente `amount_minor`, C `in_transit` `amount_minor` (saldo conferido sob trava no Banco). Grava `transaction_key`, `payout_status_event` e dá o commit. **Não** chama o mock interbancário: quem executa a saída é `POST /internal/payouts/reconcile`.
+- **Hash do pedido:** `account_key`, `purpose`, `amount_minor` e `destination` (JSON canônico, ordem das chaves irrelevante; inclui `destination.scenario`).
+- **Idempotência:** mesma chave e mesmo conteúdo devolve o estado **atual** do payout com `200`; conteúdo diferente, `422 RNV001024`. Falha antes do commit (saldo, Banco fora) dá rollback e libera a chave.
+
+Erros:
+
+- `400 RNV000001`: corpo fora do schema, `destination` vazio/acima de 4096 bytes, `purpose` ou `scenario` fora da lista, header ausente.
+- `401 RNV000003`: token ausente ou inválido.
+- `403 RNV001031`: conta não `active`.
+- `404 RNV001021`: conta inexistente ou de outro cliente.
+- `422 RNV001023`: `amount_minor` <= 0 ou acima de 9223372036854775807.
+- `422 RNV001024`: `Idempotency-Key` reusada com conteúdo diferente.
+- `422 RNV001006`: saldo insuficiente, **repassado do Banco** (mesmo código; o payout não é gravado e a chave fica livre). Outros `422` de negócio do ledger também são repassados como vêm.
+- `503 RNV001017`: Banco indisponível ou sem resposta; retente com a mesma chave (o lançamento `payout:<company_key>:<chave>` é deduplicado no Banco).
+
+**`GET /payouts/{payout_key}` — contrato completo.**
+
+- **Acesso:** cliente. Leitura passa com conta `blocked`/`closed`.
+- **Resposta `200`:** o mesmo corpo do `POST`, com `status` e `attempts` atuais.
+- **`404 RNV001032`:** payout inexistente, chave malformada ou de empresa de outro cliente (IDOR).
+
 ### Internal (jobs)
 
 | Prioridade | Método | Rota | Acesso | Justificativa |

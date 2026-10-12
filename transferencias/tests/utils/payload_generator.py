@@ -13,6 +13,17 @@ class PayloadGenerator:
         return payload
 
     @staticmethod
+    def create_payout_payload(**overrides) -> dict:
+        payload = {
+            "account_key": RandomGenerator.uuid(),
+            "purpose": "withdrawal",
+            "amount_minor": RandomGenerator.amount_minor(),
+            "destination": {"bank_code": "341", "agency": "0001", "account": RandomGenerator.uuid()[:8]},
+        }
+        payload.update(overrides)
+        return payload
+
+    @staticmethod
     def create_client_payload(**overrides) -> dict:
         payload = {
             "cpf": RandomGenerator.cpf(),

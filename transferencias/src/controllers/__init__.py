@@ -2,3 +2,4 @@ from controllers.base_controller import BaseController
 from controllers.payment_controller import PaymentController
 from controllers.settlement_controller import SettlementController
 from controllers.payment_method_controller import PaymentMethodController
+from controllers.payout_controller import PayoutController

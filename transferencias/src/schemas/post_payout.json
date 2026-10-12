@@ -1,0 +1,43 @@
+{
+  "title": "PostPayout",
+  "type": "object",
+  "properties": {
+    "account_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F-]{36}$"
+    },
+    "purpose": {
+      "type": "string",
+      "enum": [
+        "withdrawal",
+        "bill_payment",
+        "transfer"
+      ]
+    },
+    "amount_minor": {
+      "type": "integer"
+    },
+    "destination": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "scenario": {
+          "type": "string",
+          "enum": [
+            "confirm",
+            "refuse",
+            "timeout",
+            "flaky"
+          ]
+        }
+      }
+    }
+  },
+  "required": [
+    "account_key",
+    "purpose",
+    "amount_minor",
+    "destination"
+  ],
+  "additionalProperties": false
+}

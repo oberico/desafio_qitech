@@ -1,7 +1,7 @@
 import requests
 
 from constants import BANK_API_URL, BANK_TIMEOUT_SECONDS, INTERNAL_TOKEN
-from errors import BankUnavailable
+from errors import BankRefused, BankUnavailable
 
 
 class BankConnector:
@@ -21,7 +21,7 @@ class BankConnector:
             raise BankUnavailable()
         return response.json()
 
-    def post_ledger_transaction(self, payload: dict, idempotency_key: str) -> dict:
+    def post_ledger_transaction(self, payload: dict, idempotency_key: str, forward_refusals: bool = False) -> dict:
         try:
             response = requests.post(
                 f"{BANK_API_URL}/ledger/transactions",
@@ -33,6 +33,12 @@ class BankConnector:
         except (requests.exceptions.RequestException, ValueError) as error:
             raise BankUnavailable() from error
 
+        if forward_refusals and response.status_code == 422 and self._is_error_body(transaction):
+            raise BankRefused(transaction)
         if response.status_code not in (200, 201) or not transaction.get("transaction_key"):
             raise BankUnavailable()
         return transaction
+
+    @staticmethod
+    def _is_error_body(body) -> bool:
+        return isinstance(body, dict) and all(body.get(field) for field in ("title", "description", "translation", "code"))

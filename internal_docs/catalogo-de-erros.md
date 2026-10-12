@@ -57,7 +57,7 @@
 | Código | HTTP | Mensagem |
 |---|---|---|
 | RNV001015 | 422 | Lançamentos não fecham (débito ≠ crédito) |
-| RNV001006 | 422 | Saldo insuficiente |
+| RNV001006 | 422 | Saldo insuficiente (também devolvido pelo `POST /payouts`, repassado do Banco) |
 | RNV001014 | 409 | Transação já consumida ou estornada (saída única) |
 | RNV001016 | 404 | Transação referenciada inexistente |
 | RNV001024 | 422 | Idempotency-Key reusada com conteúdo diferente |
@@ -84,6 +84,10 @@ de schema/auth e dos erros do ledger quando o lançamento é propagado ao Banco.
 | Código | HTTP | Mensagem |
 |---|---|---|
 | RNV001032 | 404 | Saque inexistente ou de outro lojista |
+
+Erros possíveis no `POST /payouts`: `RNV000001` (schema), `RNV000003`, `RNV001021` (conta inexistente
+ou de outro cliente), `RNV001031` (conta não active), `RNV001023`, `RNV001024`, `RNV001006` (saldo
+insuficiente, repassado do Banco) e `RNV001017` (Banco indisponível). `RNV001030` não se aplica.
 
 ## Admin
 

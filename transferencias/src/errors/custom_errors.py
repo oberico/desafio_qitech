@@ -164,3 +164,36 @@ class PaymentAlreadyRefunded(QIException):
         description = "The payment was already refunded."
         translation = "O pagamento já foi estornado."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class AccountNotFound(QIException):
+    code = "RNV001021"
+
+    def __init__(self, account_key: str) -> None:
+        title = "Account not Found"
+        http_status = 404
+        description = f"Account with key {account_key} was not found."
+        translation = f"A conta com chave {account_key} não foi encontrada."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class NotFoundPayout(QIException):
+    code = "RNV001032"
+
+    def __init__(self, payout_key) -> None:
+        title = "Payout not Found"
+        http_status = 404
+        description = f"Payout with key {payout_key} was not found."
+        translation = f"O saque com chave {payout_key} não foi encontrado."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class BankRefused(QIException):
+    def __init__(self, refusal: dict) -> None:
+        super().__init__(
+            refusal["title"],
+            refusal["code"],
+            422,
+            refusal["description"],
+            refusal["translation"],
+        )
