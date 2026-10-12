@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -63,6 +64,13 @@ class PaymentRepository:
             .with_for_update()
             .populate_existing()
             .first()
+        )
+
+    def count_by_account_and_status(self, account_key: str, status_id: int) -> int:
+        return (
+            self.session.query(func.count(Payment.id))
+            .filter(Payment.account_key == account_key, Payment.status_id == status_id)
+            .scalar()
         )
 
     def add_status_event(self, event: PaymentStatusEvent) -> None:

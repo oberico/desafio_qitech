@@ -39,6 +39,13 @@ class PayoutRepository:
     def count_attempts(self, payout_id: int) -> int:
         return self.session.query(func.count(PayoutAttempt.id)).filter(PayoutAttempt.payout_id == payout_id).scalar()
 
+    def count_by_account_and_status(self, account_key: str, status_id: int) -> int:
+        return (
+            self.session.query(func.count(Payout.id))
+            .filter(Payout.account_key == account_key, Payout.status_id == status_id)
+            .scalar()
+        )
+
     def add_status_event(self, event: PayoutStatusEvent) -> None:
         self.session.add(event)
         self.session.flush()

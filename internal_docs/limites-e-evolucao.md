@@ -144,6 +144,19 @@ Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfec
 | Sem observabilidade de saturação | Não há métrica de uso do pool nem de latência do Banco. Sem ela, os números da seção 3(a) não podem ser validados. | (ausência no código) |
 | Isolamento READ COMMITTED é regra | Mudar para REPEATABLE READ quebra a conferência do débito. | RFC §5.1 item 6 |
 
+### (h) Encerramento de conta: Banco consulta o Transferências (direção invertida)
+
+- **Decisão consciente (opção B, tomada pelo usuário):** `POST /accounts/{key}/close` só encerra com saldo derivado zero **e** nada em voo no Transferências (payments `held` e payouts `pending` da conta). Recusa → `422 RNV001035`. A consulta de "em voo" é `GET /internal/accounts/{account_key}/in-flight` (`INTERNAL-TOKEN`), que devolve `{"held_payments": n, "pending_payouts": n}`. É a **única** chamada Banco → Transferências; todas as outras vão no sentido contrário.
+- **Ordem no controller:** trava a linha da `account` (`FOR UPDATE`, READ COMMITTED) → status `active` (`409 RNV001009`) → saldo (lido depois do lock) → consulta in-flight → muda o status → commit. O lock fica retido durante a chamada HTTP; débitos concorrentes na mesma conta esperam e, ao entrar, enxergam a conta `closed`.
+- **Fail-closed:** Transferências fora, lento (`TRANSFERENCIAS_TIMEOUT_SECONDS`, padrão 5), resposta não-200 ou corpo fora do contrato → `503 RNV000006`, nada muda e a conta continua `active`. Nunca fecha na dúvida. O código `RNV000006` foi reaproveitado do "Service Busy" (decisão do usuário); o texto do catálogo cobre os dois casos.
+- **Riscos aceitos:**
+  - **Acoplamento circular de disponibilidade:** o Transferências já depende do Banco (`/auth/me`, ledger); agora o `close` do Banco depende do Transferências. Sem Transferências, ninguém encerra conta (o resto do Banco segue de pé). Não há dependência circular no startup (`banco-api` não tem `depends_on` do Transferências).
+  - **Lock durante HTTP:** até `TRANSFERENCIAS_TIMEOUT_SECONDS` segundos com a linha da conta travada e uma conexão do Banco presa; débitos da mesma conta esperam. Escopo limitado a uma conta que o titular está encerrando.
+  - **Janela de criação de payment:** o `POST /payments` lê o status da conta no início da requisição (`/auth/me`) e o crédito do `receipt` vai para `in_transit`, uma conta interna que não toca a linha do cliente nem espera o lock. Logo um payment aceito antes do commit do `close` pode não aparecer na consulta in-flight (a linha ainda não está commitada) e a conta fecha com um payment `held`. O guard de conta `active` do `POST /payments` mitiga só quem começa depois do commit. Consequência: no settlement o crédito para a conta `closed` seria recusado pelo ledger (`RNV001005`) e o payment ficaria `held` até um refund. É o resíduo da opção B; fechar a janela exigiria o Transferências travar algo da conta durante o `POST /payments`, o que não existe hoje.
+  - **Sem índice** em `payment(account_key, status_id)` e `payout(account_key, status_id)`: a contagem faz varredura. Pedir ao Wren se o volume crescer.
+- **Bloqueio (`block`) não move dinheiro:** o saldo fica congelado na conta do titular, sem débito, como passivo do banco perante o titular. Para fundos bloqueados por fraude ou ordem judicial, o destino do dinheiro é evolução (por exemplo uma conta interna `held_funds`).
+- **Payout `pending` de conta bloqueada:** fica parado em `in_transit` até o `unblock`; o dinheiro já saiu da conta do titular e ainda não saiu do banco.
+
 ## 4. Caminho de evolução em degraus
 
 | Degrau | O que muda | Custo | Muda o contrato da RFC? | Status |

@@ -39,6 +39,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${BANCO_DB_USER:-rnv}:${BANCO_DB_PASSWORD:-rnv}@banco-db:5432/${BANCO_DB_NAME:-banco}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
+      TRANSFERENCIAS_API_URL: http://transferencias-api:8002
+      TRANSFERENCIAS_TIMEOUT_SECONDS: ${TRANSFERENCIAS_TIMEOUT_SECONDS:-5}
     ports:
       - "${BANCO_API_PORT:-8001}:8001"
     depends_on:
@@ -113,4 +115,19 @@ services:
       banco-api:
         condition: service_started
       external-mocks:
+        condition: service_healthy
+
+  banco-api-fault:
+    profiles: ["fault"]
+    build: ./banco
+    pull_policy: build
+    environment:
+      DATABASE_URL: postgresql://${BANCO_DB_USER:-rnv}:${BANCO_DB_PASSWORD:-rnv}@banco-db:5432/${BANCO_DB_NAME:-banco}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internal-token-dev}
+      TRANSFERENCIAS_API_URL: http://transferencias-unreachable.invalid:8002
+      TRANSFERENCIAS_TIMEOUT_SECONDS: 2
+    ports:
+      - "${BANCO_FAULT_API_PORT:-8011}:8001"
+    depends_on:
+      banco-db:
         condition: service_healthy

@@ -9,12 +9,12 @@ from controllers.base_controller import BaseController
 from dtos import PayoutDTO
 from errors import (
     AccountNotActive,
-    AccountNotFound,
     BankRefused,
     BankUnavailable,
     IdempotencyKeyReused,
     InvalidAmount,
     InvalidSchema,
+    NotFoundCompany,
     NotFoundPayout,
 )
 from models import Payout, PayoutStatus, PayoutStatusEvent
@@ -120,7 +120,7 @@ class PayoutController(BaseController):
             None,
         )
         if company is None:
-            raise AccountNotFound(account_key)
+            raise NotFoundCompany(account_key)
         if company["account_status"] != ACTIVE_ACCOUNT_STATUS:
             raise AccountNotActive()
         return company

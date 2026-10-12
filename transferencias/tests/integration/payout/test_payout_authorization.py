@@ -56,12 +56,12 @@ class TestPayoutAuthorization:
         payload = payout_payload()
         status, response = other_payouts.post_payout(payload, str(uuid4()))
         assert status == 404
-        assert response["code"] == "RNV001021"
+        assert response["code"] == "RNV001018"
 
     def test_refuses_nonexistent_account(self, payouts):
         status, response = payouts.post_payout(PayloadGenerator.create_payout_payload(), str(uuid4()))
         assert status == 404
-        assert response["code"] == "RNV001021"
+        assert response["code"] == "RNV001018"
         assert set(response) == ERROR_FIELDS
 
     @pytest.mark.parametrize(
