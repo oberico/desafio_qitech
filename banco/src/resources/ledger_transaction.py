@@ -1,4 +1,4 @@
-from fastapi import Body, Header
+from fastapi import Body, Header, Request
 from fastapi import status as http_status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
@@ -18,3 +18,8 @@ class LedgerTransactionResource:
         transaction, created = controller.create_transaction(payload, idempotency_key)
         status_code = http_status.HTTP_201_CREATED if created else http_status.HTTP_200_OK
         return JSONResponse(content=jsonable_encoder(transaction), status_code=status_code)
+
+    def on_get_receipts(self, request: Request) -> JSONResponse:
+        controller = LedgerController(get_context().session)
+        receipts = controller.list_open_receipts(dict(request.query_params))
+        return JSONResponse(content=jsonable_encoder(receipts), status_code=http_status.HTTP_200_OK)

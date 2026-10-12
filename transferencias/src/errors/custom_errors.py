@@ -269,3 +269,20 @@ class AdminForbidden(QIException):
         description = "This route is restricted to administrators."
         translation = "Esta rota é restrita a administradores."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class ReceiptAlreadyReversed(QIException):
+    code = "RNV001038"
+
+    def __init__(self) -> None:
+        title = "Sale Expired"
+        http_status = 409
+        description = (
+            "The receipt for this Idempotency-Key was already refunded by the reconciliation; the sale expired. "
+            "Use a new Idempotency-Key."
+        )
+        translation = (
+            "O recebimento desta Idempotency-Key já foi estornado pela reconciliação; a venda expirou. "
+            "Use uma nova Idempotency-Key."
+        )
+        super().__init__(title, self.code, http_status, description, translation)

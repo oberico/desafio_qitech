@@ -3,6 +3,8 @@ import requests
 from constants import BANK_API_URL, BANK_TIMEOUT_SECONDS, INTERNAL_TOKEN
 from errors import BankRefused, BankUnavailable
 
+RECEIPT_PAGE_SIZE = 100
+
 
 class BankConnector:
     def get_client_identity(self, client_token: str) -> dict:
@@ -38,6 +40,25 @@ class BankConnector:
         if response.status_code not in (200, 201) or not transaction.get("transaction_key"):
             raise BankUnavailable()
         return transaction
+
+    def list_open_receipts(self, created_before: str, cursor: str = None) -> dict:
+        params = {"before": created_before, "limit": RECEIPT_PAGE_SIZE}
+        if cursor is not None:
+            params["cursor"] = cursor
+        try:
+            response = requests.get(
+                f"{BANK_API_URL}/internal/ledger/receipts",
+                params=params,
+                headers={"INTERNAL-TOKEN": INTERNAL_TOKEN},
+                timeout=BANK_TIMEOUT_SECONDS,
+            )
+            page = response.json()
+        except (requests.exceptions.RequestException, ValueError) as error:
+            raise BankUnavailable() from error
+
+        if response.status_code != 200 or "data" not in page:
+            raise BankUnavailable()
+        return page
 
     @staticmethod
     def _is_error_body(body) -> bool:

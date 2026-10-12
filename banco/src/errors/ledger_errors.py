@@ -90,3 +90,14 @@ class InternalAccountNotAllowed(QIException):
         description = f"The account {account_key} is internal and can only be referenced by account_code."
         translation = f"A conta {account_key} é interna e só pode ser referenciada por account_code."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class SameAccountOnBothSides(QIException):
+    code = "RNV001037"
+
+    def __init__(self, account_reference: str) -> None:
+        title = "Same Account on Both Sides"
+        http_status = 422
+        description = f"The account {account_reference} cannot be debited and credited in the same transaction."
+        translation = f"A conta {account_reference} não pode ser debitada e creditada no mesmo lançamento."
+        super().__init__(title, self.code, http_status, description, translation)

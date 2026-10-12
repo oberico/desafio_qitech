@@ -16,6 +16,9 @@ PAYOUT_MAX_ATTEMPTS = int(os.environ.get("PAYOUT_MAX_ATTEMPTS", "3"))
 PAYOUT_BACKOFF_BASE_SECONDS = int(os.environ.get("PAYOUT_BACKOFF_BASE_SECONDS", "60"))
 PAYOUT_MAX_PER_RUN = int(os.environ.get("PAYOUT_MAX_PER_RUN", "50"))
 
+RECEIPT_ORPHAN_GRACE_HOURS = float(os.environ.get("RECEIPT_ORPHAN_GRACE_HOURS", "24"))
+RECEIPT_KEY_PREFIX = "receipt:"
+
 DB_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "10"))
 DB_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "10"))
 DB_POOL_TIMEOUT_SECONDS = float(os.environ.get("DB_POOL_TIMEOUT_SECONDS", "3"))

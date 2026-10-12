@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from constants import SCHEMAS_DIR
+from constants import RECEIPT_KEY_PREFIX, SCHEMAS_DIR
 from connectors import BankConnector
 from controllers.base_controller import BaseController
 from dtos import PaymentDTO
@@ -16,6 +16,7 @@ from errors import (
     NotFoundPayment,
     PaymentAlreadyRefunded,
     PaymentOutsideWindow,
+    ReceiptAlreadyReversed,
 )
 from models import Payment, PaymentStatus, PaymentStatusEvent
 from repositories import PaymentRepository, PaymentTransitionRepository
@@ -145,11 +146,14 @@ class PaymentController(BaseController):
         }
         try:
             transaction = self.bank_connector.post_ledger_transaction(
-                receipt, f"receipt:{payment.company_key}:{payment.idempotency_key}"
+                receipt, f"{RECEIPT_KEY_PREFIX}{payment.company_key}:{payment.idempotency_key}"
             )
         except BankUnavailable:
             self.session.rollback()
             raise
+        if transaction.get("reversed"):
+            self.session.rollback()
+            raise ReceiptAlreadyReversed()
         return transaction["transaction_key"]
 
     @staticmethod
