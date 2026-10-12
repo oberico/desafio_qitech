@@ -44,6 +44,22 @@ class LedgerRepository:
         debit = func.coalesce(func.sum(Entry.debit_minor), 0)
         return self.session.query(credit - debit).filter(Entry.account_id == account_id).scalar()
 
+    def list_statement(
+        self, account_id: int, before_entry_id: int, created_from: datetime, created_to: datetime, limit: int
+    ) -> list:
+        query = (
+            self.session.query(Entry, Transaction)
+            .join(Transaction, Transaction.id == Entry.transaction_id)
+            .filter(Entry.account_id == account_id)
+        )
+        if before_entry_id is not None:
+            query = query.filter(Entry.id < before_entry_id)
+        if created_from is not None:
+            query = query.filter(Entry.created_at >= created_from)
+        if created_to is not None:
+            query = query.filter(Entry.created_at <= created_to)
+        return query.order_by(Entry.id.desc()).limit(limit).all()
+
     def get_type(self, enumerator: str) -> TransactionType:
         return self.session.query(TransactionType).filter(TransactionType.enumerator == enumerator).one()
 

@@ -6,6 +6,7 @@ BUSINESS_TIMEZONE = "America/Sao_Paulo"
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN", "")
+CURSOR_SECRET = os.environ["CURSOR_SECRET"]
 
 BYPASS_ENDPOINTS = ["/", "/health_check"]
 INTERNAL_ROUTE_PREFIXES = ("/internal/", "/ledger/", "/auth/")
