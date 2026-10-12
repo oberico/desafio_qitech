@@ -50,15 +50,16 @@ Consequências aceitas:
 
 Cenário B é a razão de a chave do lançamento ser determinística e derivada da chave do cliente (RFC §5.2, "As chaves dos lançamentos no Banco").
 
-### Risco: receipt órfão se o cliente nunca retentar
+### Receipt órfão se o cliente nunca retentar: reconciliado
 
-Se no cenário B o cliente **não retentar**, sobra no Banco um receipt `settled` (D `reserves` / C `in_transit`) sem `payment` correspondente no Transferências:
+Se no cenário B o cliente **não retentar**, sobra no Banco um receipt `settled` (D `reserves` / C `in_transit`) sem `payment` correspondente no Transferências. O livro fecha, nenhum lojista é afetado, mas o valor fica parado no `in_transit`.
 
-- **Efeito contábil:** o livro continua fechando (débito = crédito); `reserves` e `in_transit` ficam inflados pelo mesmo valor. Nenhuma conta de lojista é afetada, e ninguém recebe nem perde dinheiro. É dinheiro "recebido" sem dono no produto.
-- **Efeito de produto:** nenhum job de liberação enxerga esse valor (não há `payment` `held`), então ele fica em `in_transit` para sempre.
-- **Probabilidade:** baixa, porque exige três coisas juntas: Banco commita, resposta se perde dentro da janela de 5 s, e o cliente desiste. Cliente de gateway costuma retentar em falha (é para isso que a chave existe), mas a RFC não garante que retentem. Não tenho taxa medida; não há métrica nem dado de produção. É estimativa qualitativa.
-- **Mitigação:** reconciliação periódica Transferências × Banco (todo receipt cuja chave começa por `receipt:` sem `payment` correspondente pelo par `company_key` + chave). Corrigir com `refund` do receipt (lançamento novo, append-only) ou criar o `payment` retroativamente, por decisão de negócio.
-- **Lacuna:** **essa reconciliação não existe hoje.** A RFC fala de reconciliação para o payout (§2, passo 7), não para esse caso. Registrado como limite, não como bug.
+**Mitigação (2026-10-12):** o job `POST /internal/receipts/reconcile` do Transferências pagina `GET /internal/ledger/receipts` no Banco (recebimentos sem `settlement` nem `refund`, criados antes de `as_of - RECEIPT_ORPHAN_GRACE_HOURS`, padrão 24 h), filtra os de chave `receipt:` sem `payment` local e lança um `refund` (D `in_transit` / C `reserves`, chave `orphan-refund:<transaction_key>`). Contrato em `rotas.md`.
+
+- **Por que estorno e não criar a venda depois:** o lançamento no Banco não guarda o meio de pagamento, então não dá para reconstruir o `payment` (taxa e janela dependem dele). Do lado do lojista a venda falhou (`503`) e ele não retentou; devolver o valor é o caminho seguro.
+- **Retry depois do estorno:** a chave do cliente nunca expira. Para que um retry tardio não crie uma venda sobre um recebimento estornado, o Banco devolve `reversed: true` no replay e o `POST /payments` recusa com `409 RNV001038`, sem gravar o `payment`. A chave fica queimada.
+- **Resíduo aceito:** se o retry tardio receber o replay do Banco **antes** do estorno e commitar o `payment` **depois** da checagem local do job, nasce um `payment` `held` sobre um recebimento estornado: não libera (`RNV001014` no settlement) nem estorna. Nenhum dinheiro se cria ou se perde (o livro fecha), mas o `payment` fica parado. Exige um retry exatamente na janela de milissegundos entre a listagem e o estorno, depois de 24 h de carência. Fechar a janela exigiria uma trava comum (por exemplo, advisory lock por `company_key` + chave) entre o job e o `POST /payments`.
+- **Custo:** a listagem inclui os recebimentos de vendas `held` ainda na janela (até 720 h de cartão) e qualquer `receipt` lançado direto no ledger; o job lê tudo isso a cada run, 100 por página.
 
 ### Inconsistência: o texto do `RNV001017`
 
@@ -147,7 +148,7 @@ Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfec
 
 | Limite | O que é | Fonte |
 |---|---|---|
-| Sem reconciliação nenhuma | Receipt órfão (seção 2), equação do livro e payout em `pending` dependem de jobs que ainda são só contrato. | RFC §2 passo 7; `rotas.md` |
+| Reconciliação depende de agendador | Receipt órfão (seção 2) e payout em `pending` têm job, mas nada os chama sozinho; a equação do livro só é conferida quando alguém consulta o admin. | RFC §2 passo 7; `rotas.md` |
 | Retry reflete o estado atual | Um retry tardio de `POST /payments` volta o estado de agora (por exemplo `settled`), e `200` em vez de `201`. É decisão, mas surpreende quem espera uma foto da resposta original. | RFC §5.2 item 4 |
 | `payload_hash` só cobre `company_key`, `amount_minor`, `method` | Mudar outro campo com a mesma chave não é detectado como reuso. Hoje esses são todos os campos que definem o pedido. | `payment_controller.py`, `_meaningful_fields` |
 | Chave do cliente limitada a 50 caracteres | Vem do composto `receipt:<company_key>:<chave>` = 95 de 100. Aumentar a chave exige aumentar a coluna do Banco. | RFC §5.2 "Tamanhos coordenados" |
@@ -184,7 +185,7 @@ Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfec
 | 1a | `BANK_TIMEOUT_SECONDS` configurável por variável de ambiente (float, padrão 5, em `constants.py`). O padrão não mudou; agora dá para baixar sem alterar código. Trade-off: timeout menor segura menos conexão, mas aumenta a chance de "resultado desconhecido" (cenário B) em Banco lento. Ainda em aberto: timeouts separados de conexão e de leitura. | Muito baixo | Não | aplicado em 2026-10-11, branch `chore/bank-timeout-and-pool-busy` |
 | 1b | Pool configurável (`DB_POOL_SIZE` 10, `DB_MAX_OVERFLOW` 10, `DB_POOL_TIMEOUT_SECONDS` 3 por padrão; 20 conexões para 40 threads) e `pool_timeout` curto: falha rápido em até 3 s em vez de enfileirar até 30 s. A decisão de código novo foi tomada: `RNV000006` (503 "Service Busy", genérico), levantado quando o pool estoura dentro do prazo, mapeado em `app.py` a partir de `sqlalchemy.exc.TimeoutError`. O 503 significa "retente". Dimensionar o pool contra as threads do servidor continua sendo ajuste a medir. | Baixo | Sim, um código novo no catálogo (aprovado) | aplicado em 2026-10-11, branch `chore/bank-timeout-and-pool-busy` |
 | 1c | Circuit breaker no `BankConnector`: após N falhas, responde `503` direto por X segundos sem chamar o Banco. Protege o pool em Banco lento. Pode não valer a complexidade nesta escala: com timeout de 5 s, 20 conexões e `pool_timeout` de 3 s o sistema já se auto-limita, e um breaker adiciona estado, configuração e casos de teste (aberto, meio-aberto, fechado). Vale se o Banco passar a ter lentidão frequente. | Baixo a médio | Não | não aplicado |
-| 1d | Reconciliação periódica Transferências × Banco para receipt órfão (seção 2) e verificação da equação do livro (3e). | Médio | Não, é job novo | não aplicado |
+| 1d | Reconciliação periódica Transferências × Banco para receipt órfão (seção 2) e verificação da equação do livro (3e). | Médio | Não, é job novo | receipt órfão aplicado (`POST /internal/receipts/reconcile`, 2026-10-12); a equação é exposta no admin, sem job |
 | 2 | Não segurar a conexão durante a chamada HTTP: gravar o `payment` com estado intermediário (por exemplo `pending_ledger`), commitar, chamar o Banco sem conexão emprestada, e promover a `held` depois. Um job de recuperação reprocessa os `pending_ledger` antigos reusando a chave `receipt:...`. Elimina a cascata do 3(a) e o receipt órfão, porque o `payment` passa a existir antes da chamada. | Médio: novo estado e transições em `payment_transition`, job, testes de falha no meio | Parcial: novo estado do `payment` (a RFC fixa `held`/`settled`/`refunded`) e o `201` passa a significar "aceito", não "lançado". Exige decisão explícita. | não aplicado |
 | 3 | Outbox assíncrono com `202`: o Transferências grava o pedido e um evento na mesma transação; um *worker* entrega ao Banco com retry. Larga escala: o Transferências deixa de depender da disponibilidade do Banco para aceitar o pedido. | Alto: worker, outbox, observabilidade, consistência eventual no produto | **Sim**: contradiz a decisão "sem saga, sem fila" (RFC §6) e muda a resposta de `201` para `202`. Exige decisão explícita do grupo e nova versão da RFC. | não aplicado |
 

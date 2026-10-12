@@ -1,13 +1,14 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 
 from connectors import BankConnector
 from constants import SCHEMAS_DIR
 from controllers.base_controller import BaseController
-from errors import BankUnavailable, InvalidFormat
+from errors import BankUnavailable
 from models import Payment, PaymentStatus, PaymentStatusEvent
 from repositories import PaymentRepository, PaymentTransitionRepository
 from utils.fee import split_fee
+from utils.as_of import resolve_as_of
 from utils.schema_handler import validate_json
 
 POST_SETTLEMENT_SCHEMA = os.path.join(SCHEMAS_DIR, "post_settlement.json")
@@ -24,7 +25,7 @@ class SettlementController(BaseController):
     def run(self, payload: dict) -> dict:
         payload = payload or {}
         validate_json(payload, POST_SETTLEMENT_SCHEMA)
-        as_of = self._resolve_as_of(payload)
+        as_of = resolve_as_of(payload)
 
         held_id = self.payment_repository.get_status(PaymentStatus.HELD).id
         settled_id = self.payment_repository.get_status(PaymentStatus.SETTLED).id
@@ -83,12 +84,3 @@ class SettlementController(BaseController):
             "settles_transaction_key": payment.transaction_key,
             "entries": debits + credits,
         }
-
-    @staticmethod
-    def _resolve_as_of(payload: dict) -> datetime:
-        if "as_of" not in payload:
-            return datetime.now(timezone.utc)
-        try:
-            return datetime.fromisoformat(payload["as_of"])
-        except ValueError as error:
-            raise InvalidFormat("as_of", "as_of: not a valid ISO 8601 instant", "esperado data e hora ISO 8601 com fuso") from error

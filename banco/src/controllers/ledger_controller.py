@@ -1,28 +1,34 @@
 import os
 from collections import defaultdict
+from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
 
 from constants import SCHEMAS_DIR
 from controllers.base_controller import BaseController
-from dtos import LedgerTransactionDTO
+from dtos import LedgerReceiptDTO, LedgerTransactionDTO
 from errors import (
     AccountNotFound,
     IdempotencyKeyReused,
     InternalAccountNotAllowed,
     InvalidTransactionReference,
     InsufficientFunds,
+    InvalidFormat,
     LedgerAccountNotActive,
     LedgerTransactionNotFound,
+    SameAccountOnBothSides,
     TransactionAlreadyConsumed,
     UnbalancedEntries,
 )
 from models import Account, AccountStatus, TransactionStatus, TransactionType
 from repositories import LedgerRepository
+from utils.cursor import decode_cursor
+from utils.pagination import build_page, page_size
 from utils.payload_hash import payload_hash
 from utils.schema_handler import validate_json
 
 POST_LEDGER_TRANSACTION_SCHEMA = os.path.join(SCHEMAS_DIR, "post_ledger_transaction.json")
+GET_LEDGER_RECEIPTS_SCHEMA = os.path.join(SCHEMAS_DIR, "get_ledger_receipts.json")
 IDEMPOTENCY_CONSTRAINT = "uq_transaction_idempotency_key"
 CONSUMPTION_CONSTRAINTS = {"uq_transaction_settles", "uq_transaction_reverses"}
 BORN_PENDING = {TransactionType.PAYOUT}
@@ -47,6 +53,7 @@ class LedgerController(BaseController):
             return self._replay(existing, request_hash)
 
         legs = self._resolve_legs(payload["entries"])
+        self._ensure_distinct_sides(legs)
         self._ensure_balanced(legs)
         settles = self._resolve_transaction(payload.get("settles_transaction_key"))
         reverses = self._resolve_transaction(payload.get("reverses_transaction_key"))
@@ -101,6 +108,32 @@ class LedgerController(BaseController):
         if account.status.enumerator != AccountStatus.ACTIVE:
             raise LedgerAccountNotActive(reference)
         return account
+
+    def list_open_receipts(self, query: dict) -> dict:
+        validate_json(query, GET_LEDGER_RECEIPTS_SCHEMA, root="query")
+        created_before = self._parse_instant(query["before"])
+        size = page_size(query)
+        before_id = decode_cursor(query["cursor"]) if "cursor" in query else None
+
+        receipts = self.ledger_repository.list_open_receipts(created_before, before_id, size + 1)
+        return build_page(receipts, size, LedgerReceiptDTO.obj_to_dict)
+
+    @staticmethod
+    def _parse_instant(value: str) -> datetime:
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            raise InvalidFormat("before", "before: invalid date", "esperado data e hora ISO 8601 com fuso")
+
+    def _ensure_distinct_sides(self, legs: list) -> None:
+        debited = {leg["account"].id for leg in legs if leg["debit_minor"] > 0}
+        for leg in legs:
+            if leg["credit_minor"] > 0 and leg["account"].id in debited:
+                raise SameAccountOnBothSides(self._reference_of(leg["account"]))
+
+    @staticmethod
+    def _reference_of(account) -> str:
+        return account.code if account.code in Account.INTERNAL_CODES else account.account_key
 
     def _ensure_balanced(self, legs: list) -> None:
         total_debit = sum(leg["debit_minor"] for leg in legs)
@@ -160,7 +193,8 @@ class LedgerController(BaseController):
     def _replay(self, existing, request_hash: str) -> tuple:
         if existing.payload_hash != request_hash:
             raise IdempotencyKeyReused(existing.idempotency_key)
-        return LedgerTransactionDTO.obj_to_dict(existing), False
+        is_reversed = self.ledger_repository.consumption_of(existing.id) == "reversed"
+        return LedgerTransactionDTO.obj_to_dict(existing, is_reversed), False
 
     def _handle_conflict(self, error: IntegrityError, payload: dict, idempotency_key: str, request_hash: str) -> tuple:
         constraint = self.ledger_repository.violated_constraint(error)

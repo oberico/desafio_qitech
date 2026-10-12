@@ -98,13 +98,14 @@ Todo erro da API tem o mesmo formato:
 | RNV001024 | 422 | Idempotency-Key reusada com conteúdo diferente |
 | RNV001033 | 422 | Transação referenciada de tipo incompatível (settlement liquida `receipt`/`payout`; refund estorna `receipt`; reversal estorna `payout`) |
 | RNV001034 | 422 | Conta interna referenciada por `account_key` (`reserves`, `in_transit` e `revenue` só entram por `account_code`) |
+| RNV001037 | 422 | A mesma conta foi debitada e creditada no mesmo lançamento (conta interna ou de cliente). Repetir a conta do mesmo lado é permitido |
 
 ## Pagamento (venda)
 
 Erros possíveis no `POST /payments`: `RNV000003` (token ausente ou inválido),
 `RNV001017` (Banco indisponível), `RNV001018` (empresa inexistente ou de outro cliente),
 `RNV001030` (empresa sem conta aberta), `RNV001031` (conta não active),
-`RNV001023` (valor inválido), `RNV001024` (Idempotency-Key reusada), além dos genéricos
+`RNV001023` (valor inválido), `RNV001024` (Idempotency-Key reusada), `RNV001038` (venda expirada: recebimento já estornado pela reconciliação), além dos genéricos
 de schema/auth e dos erros do ledger quando o lançamento é propagado ao Banco.
 
 | Código | HTTP | Mensagem |
@@ -113,6 +114,7 @@ de schema/auth e dos erros do ledger quando o lançamento é propagado ao Banco.
 | RNV001025 | 404 | Pagamento inexistente ou de outro lojista |
 | RNV001026 | 409 | Fora da janela (valor já liberado) |
 | RNV001003 | 409 | Pagamento já estornado |
+| RNV001038 | 409 | Venda expirada: o recebimento desta `Idempotency-Key` já foi estornado pela reconciliação de recebimento sem venda. A chave fica queimada; use uma nova |
 
 ## Payout (saque / saída)
 

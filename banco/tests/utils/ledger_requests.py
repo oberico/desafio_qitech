@@ -27,3 +27,7 @@ class LedgerRequests:
         status, response = self.post_transaction(payload, RandomGenerator.uuid())
         assert status == 201, f"could not create the {type} of the scenario: {status} {response}"
         return response["transaction_key"]
+
+    def list_receipts(self, params: dict = None, headers: dict = None) -> tuple:
+        request_headers = {"INTERNAL-TOKEN": self.internal_token} if headers is None else headers
+        return self.api.get("/internal/ledger/receipts", request_headers, params)

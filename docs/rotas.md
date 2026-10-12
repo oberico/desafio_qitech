@@ -88,6 +88,18 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 - `debit_minor` e `credit_minor`: inteiros de `1` a `9223372036854775807` (teto do `BIGINT`). Acima do teto → `400 RNV000010`; antes desse limite o estouro virava `500`.
 - `entries`: de `2` a `20` itens (uma transação real tem no máximo 4). Fora da faixa → `400 RNV000010`.
 
+**Regras de negócio do `POST /ledger/transactions`** (além do fechamento, `422 RNV001015`):
+
+- A mesma conta não pode ser **debitada e creditada** no mesmo lançamento → `422 RNV001037`. Vale para conta interna e de cliente. Repetir a conta do mesmo lado (dividir uma perna em duas) continua permitido.
+
+**Resposta** (`201` novo, `200` replay): `{"transaction_key", "type", "status", "reversed", "created_at"}`. `reversed` é `true` quando já existe um `refund`/`reversal` apontando para o lançamento (`reverses_transaction_id`); num lançamento novo é sempre `false`. É assim que o Transferências descobre, no replay de um `receipt`, que o recebimento já foi estornado pela reconciliação.
+
+**`GET /internal/ledger/receipts`** (serviço, `INTERNAL-TOKEN`): recebimentos **em aberto**, isto é, `receipt` sem `settlement` nem `refund` apontando para ele. Serve à reconciliação de recebimento sem venda do Transferências.
+
+- Query (JSON Schema, parâmetro desconhecido → `400 RNV000008`): `before` **obrigatório** (ISO 8601 com fuso; só entram recebimentos criados antes dele; ausente → `400 RNV000007`, inválido → `400 RNV000009`), `limit` (1 a 100, padrão 20) e `cursor` (opaco assinado, `400 RNV000011`).
+- `200 {"data": [...], "limit", "cursor", "is_last_page"}`, do mais novo para o mais antigo. Cada item: `transaction_key`, `idempotency_key`, `amount_minor` (soma dos débitos) e `created_at`.
+- Não filtra pela origem: quem decide o que é recebimento de venda é o Transferências, pelo prefixo `receipt:` da `idempotency_key`.
+
 ### Internal (bloqueio por serviço/admin)
 
 | Prioridade | Método | Rota | Acesso | Justificativa |
@@ -166,10 +178,12 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 
 | Prioridade | Método | Rota | Acesso | Justificativa |
 |---|---|---|---|---|
-| 1 | POST | `/payments` | cliente | Registra venda; snapshota tarifa+janela; credita in_transit. Erros: `RNV001030`, `RNV001031`, `RNV001023`. |
+| 1 | POST | `/payments` | cliente | Registra venda; snapshota tarifa+janela; credita in_transit. Erros: `RNV001030`, `RNV001031`, `RNV001023`, `RNV001038`. |
 | 2 | GET | `/payments/{payment_key}` | cliente | Consulta pagamento; IDOR → `404 RNV001025`. |
 | 2 | POST | `/payments/{payment_key}/refund` | cliente | Estorno cheio enquanto o payment está `held`; `409 RNV001026` se já `settled`, `409 RNV001003` se já estornado. Sem Idempotency-Key (estado `held`→`refunded` guarda). Contrato abaixo. |
 | 3 | GET | `/payments` | cliente | Lista paginada (cursor) dos payments das empresas do cliente. Contrato abaixo. |
+
+**Retry tardio do `POST /payments` (`409 RNV001038`):** se o Banco devolver no replay um `receipt` com `reversed: true` (a reconciliação de recebimento sem venda já o estornou), o `payment` não é gravado e a resposta é `409 RNV001038`. A chave do cliente fica queimada no Banco: toda nova tentativa com ela recebe o mesmo `409`; a venda precisa de uma `Idempotency-Key` nova.
 
 **Limite do `POST /payments`:** `amount_minor` deve ficar entre `1` e `9223372036854775807` (teto do `BIGINT`). `<= 0` ou acima do teto → `422 RNV001023`; antes desse limite o valor acima do teto virava `500`.
 
@@ -261,8 +275,20 @@ Erros:
 | 2 | POST | `/internal/payouts/reconcile` | serviço | Job de reconciliação do payout (confirma/falha; reversal ao falhar). |
 | 2 | PUT | `/internal/payment-methods/{method}` | serviço | Define taxa e janela de um meio de pagamento, versionando (append-only). |
 | 2 | GET | `/internal/accounts/{account_key}/in-flight` | serviço | Valores em voo da conta: `{"held_payments": n, "pending_payouts": n}`. Chamado pelo Banco no `POST /accounts/{key}/close`. |
+| 2 | POST | `/internal/receipts/reconcile` | serviço | Job de reconciliação de recebimento sem venda: estorna `receipt` órfão no Banco. Contrato abaixo. |
 
 **`GET /internal/accounts/{account_key}/in-flight`:** só `INTERNAL-TOKEN` (`403 RNV000002` sem ele). `200` sempre que autorizado, inclusive para `account_key` desconhecida ou malformada (`{"held_payments": 0, "pending_payouts": 0}`): é contagem, não recurso. `held_payments` = payments `held` da conta; `pending_payouts` = payouts `pending`. `refunded`/`settled`/`failed` não contam.
+
+**`POST /internal/receipts/reconcile` — contrato completo.**
+
+- **O problema:** no `POST /payments`, o Banco pode commitar o `receipt` e a resposta se perder; o Transferências desfaz o `payment` (`503 RNV001017`). Se o cliente retenta com a mesma chave, o replay reencontra o lançamento e a venda nasce normalmente. Se nunca retentar, sobra no Banco um `receipt` sem `payment`: o valor fica parado no `in_transit`.
+- **Acesso:** só `INTERNAL-TOKEN` (`403 RNV000002`). Corpo opcional `{"as_of": "<ISO 8601 com fuso>"}`, sem campo extra (`400 RNV000009`/`RNV000008`), mesmo papel do `as_of` dos outros jobs.
+- **Carência:** só é órfão o `receipt` criado antes de `as_of - RECEIPT_ORPHAN_GRACE_HOURS` (env, padrão 24 h). Dentro da carência o cliente ainda pode retentar e recuperar a venda.
+- **Processamento:** pagina `GET /internal/ledger/receipts?before=<corte>` no Banco; considera só `idempotency_key` com prefixo `receipt:` (recebimentos do `POST /payments`); descarta os que têm `payment` local com o mesmo `transaction_key`; para cada órfão lança no Banco um `refund` com `reverses_transaction_key` = o `receipt`, D `in_transit` / C `reserves` (valor cheio), chave `orphan-refund:<transaction_key>`.
+- **Resposta `200`:** `{"as_of", "refunded": [transaction_key], "deferred": [transaction_key]}`. `deferred` = o Banco recusou ou não respondeu ao estorno daquele item; o próximo run tenta de novo. Rodar de novo é seguro: um `receipt` estornado deixa de estar em aberto e não volta à lista.
+- **Erros:** `403 RNV000002`; `400` de formato; `503 RNV001017` se a listagem no Banco falhar (estornos já feitos no run continuam valendo, pela chave determinística).
+- **Depois do estorno:** um retry tardio do cliente com a mesma chave recebe `409 RNV001038` no `POST /payments` (ver acima), e nenhum `payment` é criado sobre um recebimento estornado.
+- **Resíduo aceito:** se o retry tardio pegar o replay do Banco **antes** do estorno e commitar o `payment` **depois** da checagem local do job, a venda nasce sobre um recebimento que o job em seguida estorna. A janela é de milissegundos, só existe depois da carência e não cria nem perde dinheiro (o livro fecha), mas deixa um `payment` `held` que não libera nem estorna. Ver `limites-e-evolucao.md`.
 
 **`PUT /internal/payment-methods/{method}` — contrato completo.**
 
