@@ -2,7 +2,7 @@
 
 Status: vivo; atualize a coluna de status quando um degrau for aplicado.
 
-> Escopo: a arquitetura atual (dois serviços, HTTP síncrono + idempotência), que é uma decisão consciente da RFC (§1 "Arquitetura" e §6 "Saga, fila ou processamento assíncrono"). Este documento não discute o desenho do livro; só registra onde ele para de escalar e o que fazemos depois. Fontes: `rfc-rnv-v7.2.md`, `analise-defesa-rfc.md` §4.5, `catalogo-de-erros.md`, `rotas.md`, `mocks-externos.md` e o código citado em cada seção.
+> Escopo: a arquitetura atual (dois serviços, HTTP síncrono + idempotência), que é uma decisão consciente da RFC (§1 "Arquitetura" e §6 "Saga, fila ou processamento assíncrono"). Este documento não discute o desenho do livro; só registra onde ele para de escalar e o que fazemos depois. Fontes: `catalogo-de-erros.md`, `rotas.md`, `mocks-externos.md` e o código citado em cada seção.
 
 ## 1. Resumo
 
@@ -114,12 +114,12 @@ Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfec
 - **O que é:** o débito faz `SELECT ... FOR UPDATE` na linha da `account`, soma o saldo depois de travar, confere e insere (`banco/src/controllers/ledger_controller.py`, `_ensure_funds`; RFC §5.1). Débitos da **mesma** conta fazem fila; contas diferentes seguem em paralelo.
 - **Por que existe:** é o que impede o *lost update* sem guardar saldo na `entry`.
 - **Quando dói:** um lojista com muitos saques simultâneos. Mil débitos na mesma conta viram uma fila de mil transações curtas (RFC §5.1, perguntas de estresse). Mais lento para aquela conta, nunca errado.
-- **Mitigação hoje:** índice `(account_id, id) INCLUDE (debit_minor, credit_minor)` para o `SUM` ser index-only scan (`analise-defesa-rfc.md` §4.5).
+- **Mitigação hoje:** índice `(account_id, id) INCLUDE (debit_minor, credit_minor)` para o `SUM` ser index-only scan.
 - **Evolução:** saldo materializado em linha **mutável e reconstruível**, atualizado na mesma transação com `UPDATE ... SET saldo = saldo + :delta WHERE saldo + :delta >= 0` (RFC §5.1). Nunca `balance_after` na `entry`.
 
 ### (e) Contas internas sem conferência de saldo no caminho da requisição
 
-- **O que é:** `reserves`, `in_transit` e `revenue` nunca são travadas nem conferidas (`_ensure_funds` só considera contas com `company_id`). Elas crescem com o volume do sistema inteiro, então o `SUM` delas é o que quebra primeiro (`analise-defesa-rfc.md` §4.5).
+- **O que é:** `reserves`, `in_transit` e `revenue` nunca são travadas nem conferidas (`_ensure_funds` só considera contas com `company_id`). Elas crescem com o volume do sistema inteiro, então o `SUM` delas é o que quebra primeiro.
 - **Por que existe:** travar uma conta tocada por toda transação serializaria o sistema (RFC §5.1 item 5).
 - **Controle relacionado:** `account_key` de conta interna é recusado com `422 RNV001034`; elas só entram por `account_code`, o que impede o cliente de movimentar o Caixa ou o Trânsito.
 - **Quando dói:** quando alguém precisar saber o saldo de `in_transit` ou `reserves` em tempo real. Hoje nada no caminho da requisição depende disso.
