@@ -126,6 +126,17 @@ Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfec
 - **Mitigação:** reconciliação em lote, com *checkpoint* se o volume pedir (RFC §5.1). **Esse job também não existe hoje**; a equação `Caixa = Trânsito + Clientes + Receita` (RFC §1) é verificável por consulta, mas ninguém a executa periodicamente.
 - **Evolução:** job de reconciliação com checkpoint; depois, saldo materializado para as internas.
 
+### (e2) `GET /admin/internal-accounts` agrega a tabela `entry` inteira
+
+- **O que é:** a cada chamada, a rota soma `debit_minor`/`credit_minor` de todas as `entry` das contas internas para devolver os totais e a equação do livro. O custo é O(n) no tamanho do livro e cresce com o volume.
+- **Evolução:** saldo materializado em linha **mutável e reconstruível**, atualizado na mesma transação com incremento atômico (nunca `balance_after`), conforme a seção (e).
+
+### Paginação das rotas admin: cursor opaco assinado
+
+- `GET /admin/clients`, `/admin/companies` e `/admin/accounts` paginam por **cursor opaco assinado** (HMAC-SHA256 com `CURSOR_SECRET`), o mesmo padrão do extrato (`utils/cursor.py`). O cursor nunca é uma chave pública; cursor adulterado, inventado ou vazio devolve `400 RNV000001`.
+- O envelope é `{data, limit, cursor, is_last_page}`; `cursor` é `null` na última página.
+- Trocar `CURSOR_SECRET` invalida os cursores em circulação (aceitável: o cliente recomeça a listagem).
+
 ### (f) Mocks em memória e `as_of` fora da RFC
 
 - **Mocks:** o `external-mocks` guarda `transfer_id` e o contador do cenário `flaky` em memória; reiniciar o container zera tudo (`mocks-externos.md`, "Limites aceitos"). O risco "o mock pagou, mas a resposta se perdeu" não existe aqui; contra um banco real, a RFC §2 o registra como risco aceito (consultar o status no destino antes do `failed` por timeout). O birô ainda é um mock dentro do Banco.

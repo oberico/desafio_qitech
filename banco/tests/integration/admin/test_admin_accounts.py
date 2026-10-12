@@ -3,7 +3,7 @@ import pytest
 from tests.utils.random_generator import RandomGenerator
 
 ROUTE = "/admin/accounts"
-PAGE_FIELDS = {"data", "cursor", "is_last_page"}
+PAGE_FIELDS = {"data", "limit", "cursor", "is_last_page"}
 
 
 class TestAdminAccounts:
@@ -96,9 +96,10 @@ class TestAdminAccounts:
             {"limit": "0"},
             {"cursor": RandomGenerator.uuid()},
             {"cursor": "x"},
+            {"cursor": ""},
             {"pagina": "2"},
         ],
-        ids=["unknown_status", "empty_status", "limit_zero", "unknown_cursor", "malformed_cursor", "unknown_parameter"],
+        ids=["unknown_status", "empty_status", "limit_zero", "public_key_cursor", "malformed_cursor", "empty_cursor", "unknown_parameter"],
     )
     def test_refuses_invalid_query(self, admin, admin_token, params):
         status, response = admin.get(ROUTE, admin_token, params)

@@ -8,9 +8,6 @@ class ClientRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def get_by_key(self, client_key: str) -> Client:
-        return self.session.query(Client).filter(Client.client_key == client_key.lower()).first()
-
     def list_newest_first(self, limit: int, before_id: int = None) -> list:
         query = self.session.query(Client)
         if before_id is not None:

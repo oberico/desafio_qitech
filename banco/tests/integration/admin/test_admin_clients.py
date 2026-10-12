@@ -4,7 +4,7 @@ from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.random_generator import RandomGenerator
 
 ROUTE = "/admin/clients"
-PAGE_FIELDS = {"data", "cursor", "is_last_page"}
+PAGE_FIELDS = {"data", "limit", "cursor", "is_last_page"}
 CLIENT_FIELDS = {"client_key", "name", "created_at"}
 
 
@@ -56,7 +56,14 @@ class TestAdminClients:
         status, response = admin.get(ROUTE, admin_token, {"limit": 1})
         assert status == 200
         assert response["is_last_page"] is False
-        assert response["cursor"] == response["data"][-1]["client_key"]
+        assert response["cursor"]
+        assert response["cursor"] != response["data"][-1]["client_key"]
+
+    def test_envelope_echoes_the_limit(self, admin, admin_token, clients):
+        create_clients(clients, 2)
+        status, response = admin.get(ROUTE, admin_token, {"limit": 2})
+        assert status == 200
+        assert response["limit"] == 2
 
     def test_cursor_walks_the_pages_without_repeating_or_skipping(self, admin, admin_token, clients):
         created_keys = create_clients(clients, 3)
@@ -77,9 +84,18 @@ class TestAdminClients:
         assert status == 400
         assert response["code"] == "RNV000001"
 
-    @pytest.mark.parametrize("cursor", [RandomGenerator.uuid(), "cursor-inventado"], ids=["unknown", "malformed"])
+    @pytest.mark.parametrize("cursor", [RandomGenerator.uuid(), "cursor-inventado", ""], ids=["public_key", "made_up", "empty"])
     def test_refuses_invalid_cursor(self, admin, admin_token, cursor):
         status, response = admin.get(ROUTE, admin_token, {"cursor": cursor})
+        assert status == 400
+        assert response["code"] == "RNV000001"
+
+    def test_refuses_tampered_cursor(self, admin, admin_token, clients):
+        create_clients(clients, 2)
+        _, first_page = admin.get(ROUTE, admin_token, {"limit": 1})
+        cursor = first_page["cursor"]
+        tampered = ("B" if cursor[0] == "A" else "A") + cursor[1:]
+        status, response = admin.get(ROUTE, admin_token, {"limit": 1, "cursor": tampered})
         assert status == 400
         assert response["code"] == "RNV000001"
 

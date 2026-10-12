@@ -13,13 +13,6 @@ class AccountRepository:
     def list_internal(self) -> list:
         return self.session.query(Account).filter(Account.company_id.is_(None)).order_by(Account.id).all()
 
-    def get_by_key(self, account_key: str) -> Account:
-        return (
-            self.session.query(Account)
-            .filter(Account.account_key == account_key.lower(), Account.company_id.isnot(None))
-            .first()
-        )
-
     def list_newest_first(self, limit: int, before_id: int = None, status: str = None) -> list:
         query = self.session.query(Account).filter(Account.company_id.isnot(None))
         if status is not None:

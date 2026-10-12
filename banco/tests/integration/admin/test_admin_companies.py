@@ -4,7 +4,7 @@ from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.random_generator import RandomGenerator
 
 ROUTE = "/admin/companies"
-PAGE_FIELDS = {"data", "cursor", "is_last_page"}
+PAGE_FIELDS = {"data", "limit", "cursor", "is_last_page"}
 COMPANY_FIELDS = {"company_key", "cnpj", "legal_name", "account_key", "account_status"}
 
 
@@ -71,8 +71,8 @@ class TestAdminCompanies:
 
     @pytest.mark.parametrize(
         "params",
-        [{"limit": "0"}, {"limit": "101"}, {"cursor": RandomGenerator.uuid()}, {"cursor": "x"}, {"pagina": "2"}],
-        ids=["limit_zero", "limit_too_big", "unknown_cursor", "malformed_cursor", "unknown_parameter"],
+        [{"limit": "0"}, {"limit": "101"}, {"cursor": RandomGenerator.uuid()}, {"cursor": "x"}, {"cursor": ""}, {"pagina": "2"}],
+        ids=["limit_zero", "limit_too_big", "public_key_cursor", "malformed_cursor", "empty_cursor", "unknown_parameter"],
     )
     def test_refuses_invalid_query(self, admin, admin_token, params):
         status, response = admin.get(ROUTE, admin_token, params)
