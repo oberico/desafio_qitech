@@ -53,6 +53,17 @@ Testes de integração caixa-preta, via HTTP, em TDD.
 | `pytest -m "not fault and not slow"` | pula também os que esperam o timeout real do interbancário (~5 s cada) |
 | `docker compose --profile fault up -d` e `pytest -m fault` | Banco fora do ar, Transferências fora do ar, pool de conexões esgotado |
 
+### Ponta a ponta (Postman ou Insomnia)
+
+[`docs/postman/rnv-ponta-a-ponta.postman_collection.json`](docs/postman/rnv-ponta-a-ponta.postman_collection.json) conta uma história completa pelos três serviços: cadastro, conta aberta pelo birô, vendas em pix, boleto e cartão, estorno, liberação com tarifa, saque confirmado e saque recusado com o dinheiro voltando, encerramento da conta e a equação do livro conferida no admin. São 40 requisições com testes de status, código de erro e saldos.
+
+```bash
+docker compose up -d
+npx newman run docs/postman/rnv-ponta-a-ponta.postman_collection.json
+```
+
+No Postman ou no Insomnia, importe o arquivo e rode a coleção em ordem. CPF, CNPJ e e-mail são gerados a cada execução, então ela pode ser repetida sem zerar a base.
+
 ## Stack
 
 Python 3.11 · FastAPI · SQLAlchemy · PostgreSQL · Docker Compose · pytest · JSON Schema.
@@ -65,6 +76,7 @@ As decisões e o raciocínio do projeto estão na [RFC](internal_docs/rfc-rnv-v8
 - [Catálogo de erros](internal_docs/catalogo-de-erros.md): todos os códigos `RNV`.
 - [Mocks externos](internal_docs/mocks-externos.md): o contrato do simulador interbancário.
 - [Limites e evolução](internal_docs/limites-e-evolucao.md): o que o projeto não resolve hoje e como evoluiria.
+- [Checkup de testes](internal_docs/checkup-de-testes.md): o mapa da suíte, os testes obrigatórios e as lacunas conhecidas.
 
 ## Time
 
