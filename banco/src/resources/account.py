@@ -18,6 +18,11 @@ class AccountResource:
         account = controller.get_by_key(account_key, request.state.client_id)
         return JSONResponse(content=jsonable_encoder(account), status_code=http_status.HTTP_200_OK)
 
+    def on_get_balance(self, request: Request, account_key: str) -> JSONResponse:
+        controller = AccountController(get_context().session)
+        balance = controller.get_balance(account_key, request.state.client_id)
+        return JSONResponse(content=jsonable_encoder(balance), status_code=http_status.HTTP_200_OK)
+
     def on_post_close(self, request: Request, account_key: str) -> JSONResponse:
         controller = AccountController(get_context().session)
         account = controller.close(account_key, request.state.client_id)

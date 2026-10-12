@@ -3,10 +3,10 @@ from uuid import uuid4
 from connectors import MockBureauConnector
 from connectors.mock_bureau_connector import REJECTION_REASON
 from controllers.base_controller import BaseController
-from dtos import AccountDTO, InternalAccountDTO
+from dtos import AccountBalanceDTO, AccountDTO, InternalAccountDTO
 from errors import AccountNotActive, AccountNotBlocked, AccountNotFound, CompanyAlreadyHasAccount, CompanyNotFound
 from models import Account, AccountClass, AccountStatus
-from repositories import AccountRepository, CompanyRepository
+from repositories import AccountRepository, CompanyRepository, LedgerRepository
 
 CLIENT_ACCOUNT_NORMAL_BALANCE = "c"
 CONSTRAINT_ERRORS = {"account_company_id_key": CompanyAlreadyHasAccount}
@@ -17,8 +17,9 @@ class AccountController(BaseController):
         super().__init__(session)
         self.account_repository = AccountRepository(session)
         self.company_repository = CompanyRepository(session)
+        self.ledger_repository = LedgerRepository(session)
         self.bureau_connector = MockBureauConnector()
-
+        
     def list_internal(self) -> list:
         return [InternalAccountDTO.obj_to_dict(account) for account in self.account_repository.list_internal()]
 
@@ -58,6 +59,12 @@ class AccountController(BaseController):
         if account is None:
             raise AccountNotFound(account_key)
         return AccountDTO.obj_to_dict(account)
+
+    def get_balance(self, account_key: str, client_id: int) -> dict:
+        account = self.account_repository.get_by_key_and_client(account_key, client_id)
+        if account is None:
+            raise AccountNotFound(account_key)
+        return AccountBalanceDTO.obj_to_dict(account, self.ledger_repository.balance_of(account.id))
 
     def close(self, account_key: str, client_id: int) -> dict:
         account = self.account_repository.lock_by_key_and_client(account_key, client_id)
