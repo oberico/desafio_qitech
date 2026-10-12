@@ -23,14 +23,23 @@ class CompanyAlreadyHasAccount(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+ACCOUNT_STATUS_NAMES = {
+    "created": "criada",
+    "active": "ativa",
+    "rejected": "reprovada",
+    "blocked": "bloqueada",
+    "closed": "encerrada",
+}
+
+
 class AccountNotActive(QIException):
     code = "RNV001009"
 
-    def __init__(self) -> None:
+    def __init__(self, status: str) -> None:
         title = "Account Not Active"
         http_status = 409
-        description = "The account is not active, so this operation is not allowed."
-        translation = "A conta não está ativa, por isso esta operação não é permitida."
+        description = f"The account is {status}, so this operation is not allowed."
+        translation = f"A conta está {ACCOUNT_STATUS_NAMES.get(status, status)}, por isso esta operação não é permitida."
         super().__init__(title, self.code, http_status, description, translation)
 
 

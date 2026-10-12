@@ -121,7 +121,7 @@ class TestPaymentList:
         status, response = merchant.list_payments({"limit": limit})
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000009"
 
     @pytest.mark.parametrize(
         "cursor",
@@ -134,7 +134,7 @@ class TestPaymentList:
         status, response = merchant.list_payments({"cursor": cursor})
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000011"
 
     def test_refuses_tampered_cursor(self, merchant, create_payments):
         create_payments(merchant, 2)
@@ -145,7 +145,13 @@ class TestPaymentList:
         status, response = merchant.list_payments({"limit": 1, "cursor": tampered})
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000011"
+
+
+    def test_invalid_cursor_translation_explains_where_the_cursor_comes_from(self, merchant):
+        _, response = merchant.list_payments({"cursor": "x"})
+        assert response["title"] == "Invalid Cursor"
+        assert response["translation"] == "O cursor é inválido: use o valor devolvido na página anterior, sem alterar."
 
     def test_cursor_of_another_client_only_marks_a_position(self, merchant, other_merchant, create_payments):
         mine = create_payments(merchant, 2)
@@ -162,7 +168,7 @@ class TestPaymentList:
         status, response = merchant.list_payments({"page": "2"})
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000008"
 
     def test_unknown_parameter_error_points_to_the_query(self, merchant):
         status, response = merchant.list_payments({"page": "2"})
@@ -213,7 +219,7 @@ class TestPaymentList:
         status, response = merchant.list_payments({"status": value})
 
         assert status == 400
-        assert response["code"] == "RNV000001"
+        assert response["code"] == "RNV000009"
 
     def test_never_lists_payments_of_another_client(self, merchant, other_merchant, create_payments):
         mine = create_payments(merchant, 2)

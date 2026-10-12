@@ -41,9 +41,9 @@ Para acrescentar um domínio, crie `resources/<dominio>_*.py`, `controllers/<dom
 | `refuse` | `422 {"status": "refused", "reason": "destination_refused"}` (definitiva) |
 | `timeout` | segura a resposta por `MOCK_TIMEOUT_SECONDS`, e o cliente estoura o timeout |
 | `flaky` | por `payout_key`: as chamadas 1 e 2 se comportam como `timeout`, da 3ª em diante confirma |
-| qualquer outro valor | `400` `RNV000001` |
+| qualquer outro valor | `400` `RNV000009` |
 
-Corpo inválido (campo faltando, `amount_minor` que não seja inteiro positivo, `payout_key` que não seja UUID, campos extras, JSON malformado) devolve `400` com `{title, description, translation, code}` e `code` `RNV000001`.
+Corpo inválido devolve `400` com `{title, description, translation, code}`, um código por tipo: `RNV000007` campo faltando, `RNV000008` campo extra, `RNV000009` tipo ou formato errado (`payout_key` que não seja UUID, `amount_minor` que não seja inteiro), `RNV000010` fora do limite (`amount_minor` <= 0, `purpose` vazio), `RNV000001` corpo que não é objeto JSON.
 
 Idempotente por `payout_key`: confirmações repetidas devolvem o mesmo `transfer_id`. Recusas e travamentos não são lembrados; o `flaky` guarda um contador de chamadas por `payout_key`.
 

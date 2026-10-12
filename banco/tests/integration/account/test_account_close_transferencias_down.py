@@ -27,7 +27,7 @@ class TestAccountCloseTransferenciasDown:
     def test_refuses_closing_when_transferencias_is_unreachable(self, fault_accounts, active_account, client_token):
         status, response = fault_accounts.close(active_account, client_token)
         assert status == 503
-        assert response["code"] == "RNV000006"
+        assert response["code"] == "RNV001036"
 
     def test_account_stays_active_when_transferencias_is_unreachable(
         self, fault_accounts, accounts, active_account, client_token

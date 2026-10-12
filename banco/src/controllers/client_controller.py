@@ -11,8 +11,9 @@ from errors import (
     EmailAlreadyRegistered,
     InvalidClientToken,
     InvalidCpf,
-    InvalidSchema,
+    InvalidFormat,
     UnderageClient,
+    ValueOutOfRange,
 )
 from models import ApiToken, Client
 from repositories import ClientRepository
@@ -81,9 +82,9 @@ class ClientController(BaseController):
         try:
             birthdate = date.fromisoformat(value)
         except ValueError:
-            raise InvalidSchema(f"birthdate: {value} is not a valid date")
+            raise InvalidFormat("birthdate", f"birthdate: {value} is not a valid date", "esperado uma data válida no formato AAAA-MM-DD")
         if birthdate > ClientController._today():
-            raise InvalidSchema(f"birthdate: {value} cannot be in the future")
+            raise ValueOutOfRange("birthdate", f"birthdate: {value} cannot be in the future", "não pode estar no futuro")
         return birthdate
 
     @staticmethod

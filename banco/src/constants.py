@@ -15,5 +15,6 @@ BYPASS_ENDPOINTS = ["/", "/health_check"]
 INTERNAL_ROUTE_PREFIXES = ("/internal/", "/ledger/", "/auth/")
 ADMIN_ROUTE_PREFIX = "/admin/"
 PUBLIC_ROUTES = {("GET", "/"), ("GET", "/health_check"), ("POST", "/clients")}
+IDEMPOTENCY_KEY_MAX_LENGTH = 100
 
 SCHEMAS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schemas")

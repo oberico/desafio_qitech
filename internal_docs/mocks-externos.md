@@ -29,7 +29,7 @@ O Transferências, em `connectors/interbank_connector.py`, durante `POST /intern
 
 ### `POST /interbank/transfers`
 
-Corpo (JSON Schema estrito; qualquer desvio → `400 RNV000001`):
+Corpo (JSON Schema estrito; desvio → `400` com o código do tipo: `RNV000007` campo faltando, `RNV000008` campo extra, `RNV000009` tipo ou formato, `RNV000010` fora do limite, `RNV000001` corpo que não é objeto JSON):
 
 | Campo | Tipo | Regra |
 |---|---|---|
@@ -38,9 +38,9 @@ Corpo (JSON Schema estrito; qualquer desvio → `400 RNV000001`):
 | `purpose` | string | obrigatório |
 | `destination` | objeto | livre; só `destination.scenario` é lido |
 
-Schema estrito: **campo extra na raiz do corpo é recusado** (`400 RNV000001`). Dentro de `destination` o objeto é livre.
+Schema estrito: **campo extra na raiz do corpo é recusado** (`400 RNV000008`). Dentro de `destination` o objeto é livre.
 
-`destination.scenario` é opcional: `confirm` (padrão), `refuse`, `timeout`, `flaky`. Valor fora da lista → `400 RNV000001`.
+`destination.scenario` é opcional: `confirm` (padrão), `refuse`, `timeout`, `flaky`. Valor fora da lista → `400 RNV000009`.
 
 | Cenário | Resposta |
 |---|---|

@@ -126,14 +126,15 @@ class LedgerController(BaseController):
         if transaction is None:
             return
         self.ledger_repository.lock_transaction(transaction.id)
-        if self.ledger_repository.is_consumed(transaction.id):
-            raise TransactionAlreadyConsumed(transaction.transaction_key)
+        outcome = self.ledger_repository.consumption_of(transaction.id)
+        if outcome is not None:
+            raise TransactionAlreadyConsumed(transaction.transaction_key, outcome)
 
     def _ensure_can_settle(self, transaction) -> None:
         if transaction is None or transaction.type.enumerator != TransactionType.PAYOUT:
             return
         if not self.ledger_repository.is_transition_allowed(transaction, TransactionStatus.SETTLED):
-            raise TransactionAlreadyConsumed(transaction.transaction_key)
+            raise TransactionAlreadyConsumed(transaction.transaction_key, "settled")
 
     def _settle_target(self, transaction) -> None:
         if transaction is None or transaction.type.enumerator != TransactionType.PAYOUT:
@@ -167,8 +168,14 @@ class LedgerController(BaseController):
             existing = self.ledger_repository.get_by_idempotency_key(idempotency_key)
             return self._replay(existing, request_hash)
         if constraint in CONSUMPTION_CONSTRAINTS:
-            raise TransactionAlreadyConsumed(payload.get("settles_transaction_key") or payload.get("reverses_transaction_key"))
+            raise TransactionAlreadyConsumed(*self._consumed_reference(payload, constraint))
         raise error
+
+    @staticmethod
+    def _consumed_reference(payload: dict, constraint: str) -> tuple:
+        if constraint == "uq_transaction_settles":
+            return payload["settles_transaction_key"], "settled"
+        return payload["reverses_transaction_key"], "reversed"
 
     def _meaningful_fields(self, payload: dict) -> dict:
         entries = sorted(

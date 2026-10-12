@@ -23,14 +23,17 @@ class InsufficientFunds(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+CONSUMPTION_NAMES = {"settled": "liquidada", "reversed": "estornada"}
+
+
 class TransactionAlreadyConsumed(QIException):
     code = "RNV001014"
 
-    def __init__(self, transaction_key: str) -> None:
+    def __init__(self, transaction_key: str, outcome: str) -> None:
         title = "Transaction Already Consumed"
         http_status = 409
-        description = f"The transaction {transaction_key} was already settled or reversed."
-        translation = f"A transação {transaction_key} já foi liquidada ou estornada."
+        description = f"The transaction {transaction_key} was already {outcome}."
+        translation = f"A transação {transaction_key} já foi {CONSUMPTION_NAMES[outcome]}."
         super().__init__(title, self.code, http_status, description, translation)
 
 

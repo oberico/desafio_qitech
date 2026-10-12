@@ -96,35 +96,35 @@ class TestFlaky:
 
 class TestInvalidBody:
     @pytest.mark.parametrize(
-        "mutation",
+        "mutation, code",
         [
-            lambda payload: payload.pop("payout_key"),
-            lambda payload: payload.pop("amount_minor"),
-            lambda payload: payload.pop("purpose"),
-            lambda payload: payload.pop("destination"),
-            lambda payload: payload.update(payout_key="not-a-uuid"),
-            lambda payload: payload.update(payout_key=123),
-            lambda payload: payload.update(amount_minor=0),
-            lambda payload: payload.update(amount_minor=-5),
-            lambda payload: payload.update(amount_minor=10.5),
-            lambda payload: payload.update(amount_minor="100"),
-            lambda payload: payload.update(amount_minor=True),
-            lambda payload: payload.update(purpose=""),
-            lambda payload: payload.update(purpose=7),
-            lambda payload: payload.update(destination="bank"),
-            lambda payload: payload.update(destination=[]),
-            lambda payload: payload.update(extra="field"),
-            lambda payload: payload["destination"].update(scenario="explode"),
-            lambda payload: payload["destination"].update(scenario=1),
+            (lambda payload: payload.pop("payout_key"), "RNV000007"),
+            (lambda payload: payload.pop("amount_minor"), "RNV000007"),
+            (lambda payload: payload.pop("purpose"), "RNV000007"),
+            (lambda payload: payload.pop("destination"), "RNV000007"),
+            (lambda payload: payload.update(payout_key="not-a-uuid"), "RNV000009"),
+            (lambda payload: payload.update(payout_key=123), "RNV000009"),
+            (lambda payload: payload.update(amount_minor=0), "RNV000010"),
+            (lambda payload: payload.update(amount_minor=-5), "RNV000010"),
+            (lambda payload: payload.update(amount_minor=10.5), "RNV000009"),
+            (lambda payload: payload.update(amount_minor="100"), "RNV000009"),
+            (lambda payload: payload.update(amount_minor=True), "RNV000009"),
+            (lambda payload: payload.update(purpose=""), "RNV000010"),
+            (lambda payload: payload.update(purpose=7), "RNV000009"),
+            (lambda payload: payload.update(destination="bank"), "RNV000009"),
+            (lambda payload: payload.update(destination=[]), "RNV000009"),
+            (lambda payload: payload.update(extra="field"), "RNV000008"),
+            (lambda payload: payload["destination"].update(scenario="explode"), "RNV000009"),
+            (lambda payload: payload["destination"].update(scenario=1), "RNV000009"),
         ],
     )
-    def test_rejects_with_invalid_schema(self, transfers, mutation):
+    def test_rejects_with_invalid_schema(self, transfers, mutation, code):
         payload = copy.deepcopy(TransferRequests.build_payload())
         mutation(payload)
         status, response = transfers.post_transfer(payload)
         assert status == 400
         assert set(response) == ERROR_FIELDS
-        assert response["code"] == "RNV000001"
+        assert response["code"] == code
 
     def test_rejects_a_body_that_is_not_json(self, api):
         status, response, _ = api.request_with_headers("POST", "/interbank/transfers")
