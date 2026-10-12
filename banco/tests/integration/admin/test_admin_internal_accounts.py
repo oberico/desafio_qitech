@@ -1,8 +1,13 @@
+import re
+
 from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.random_generator import RandomGenerator
 
 ROUTE = "/admin/internal-accounts"
-TOTAL_FIELDS = {"reserves_minor", "in_transit_minor", "revenue_minor", "clients_total_minor", "equation_ok"}
+MINOR_FIELDS = {"reserves_minor", "in_transit_minor", "revenue_minor", "clients_total_minor"}
+FORMATTED_FIELDS = {field.replace("_minor", "_formatted") for field in MINOR_FIELDS}
+TOTAL_FIELDS = MINOR_FIELDS | FORMATTED_FIELDS | {"equation_ok"}
+BRL_PATTERN = re.compile(r"^-?R\$ \d{1,3}(\.\d{3})*,\d{2}$")
 AMOUNT = 1_000
 FEE = 30
 
@@ -14,7 +19,13 @@ def ledger_totals(admin, admin_token) -> dict:
 
 
 def difference(before: dict, after: dict) -> dict:
-    return {field: after[field] - before[field] for field in TOTAL_FIELDS - {"equation_ok"}}
+    return {field: after[field] - before[field] for field in MINOR_FIELDS}
+
+
+def brl(amount_minor: int) -> str:
+    reais, cents = divmod(abs(amount_minor), 100)
+    sign = "-" if amount_minor < 0 else ""
+    return f"{sign}R$ {reais:,}".replace(",", ".") + f",{cents:02d}"
 
 
 def post_receipt(ledger) -> str:
@@ -47,7 +58,7 @@ class TestAdminInternalAccounts:
     def test_returns_the_ledger_totals(self, admin, admin_token):
         response = ledger_totals(admin, admin_token)
         assert set(response) == TOTAL_FIELDS
-        for field in TOTAL_FIELDS - {"equation_ok"}:
+        for field in MINOR_FIELDS:
             assert isinstance(response[field], int)
 
     def test_equation_closes(self, admin, admin_token):
@@ -85,3 +96,14 @@ class TestAdminInternalAccounts:
             "revenue_minor": FEE,
         }
         assert after["equation_ok"] is True
+
+    def test_each_total_comes_formatted_in_reais(self, admin, admin_token):
+        response = ledger_totals(admin, admin_token)
+        for field in FORMATTED_FIELDS:
+            assert BRL_PATTERN.match(response[field]), f"{field} fora do formato: {response[field]!r}"
+
+    def test_formatted_totals_match_the_minor_totals(self, admin, admin_token, ledger):
+        post_receipt(ledger)
+        response = ledger_totals(admin, admin_token)
+        for field in MINOR_FIELDS:
+            assert response[field.replace("_minor", "_formatted")] == brl(response[field])
