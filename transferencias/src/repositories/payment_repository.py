@@ -97,6 +97,12 @@ class PaymentRepository:
             .scalar()
         )
 
+    def existing_transaction_keys(self, transaction_keys: list) -> set:
+        if not transaction_keys:
+            return set()
+        rows = self.session.query(Payment.transaction_key).filter(Payment.transaction_key.in_(transaction_keys)).all()
+        return {row.transaction_key for row in rows}
+
     def add_status_event(self, event: PaymentStatusEvent) -> None:
         self.session.add(event)
         self.session.flush()

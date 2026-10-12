@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from sqlalchemy import case, func, or_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from models import Account, AllowedTransition, Entry, Transaction, TransactionStatus, TransactionStatusEvent, TransactionType
 
@@ -37,6 +37,33 @@ class LedgerRepository:
         if consumer is None:
             return None
         return "reversed" if consumer.reverses_transaction_id == transaction_id else "settled"
+
+    def list_open_receipts(self, created_before: datetime, before_id: int, limit: int) -> list:
+        consumer = aliased(Transaction)
+        consumed = (
+            self.session.query(consumer.id)
+            .filter(or_(consumer.settles_transaction_id == Transaction.id, consumer.reverses_transaction_id == Transaction.id))
+            .exists()
+        )
+        query = (
+            self.session.query(
+                Transaction.id,
+                Transaction.transaction_key,
+                Transaction.idempotency_key,
+                Transaction.created_at,
+                func.sum(Entry.debit_minor).label("amount_minor"),
+            )
+            .join(Entry, Entry.transaction_id == Transaction.id)
+            .join(TransactionType, TransactionType.id == Transaction.type_id)
+            .filter(
+                TransactionType.enumerator == TransactionType.RECEIPT,
+                Transaction.created_at < created_before,
+                ~consumed,
+            )
+        )
+        if before_id is not None:
+            query = query.filter(Transaction.id < before_id)
+        return query.group_by(Transaction.id).order_by(Transaction.id.desc()).limit(limit).all()
 
     def lock_account(self, account_id: int) -> None:
         self.session.query(Account.id).filter(Account.id == account_id).with_for_update().one()

@@ -1,13 +1,14 @@
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from connectors import BankConnector, InterbankConnector
 from connectors.interbank_connector import CONFIRMED, REJECTED, TIMEOUT
 from constants import PAYOUT_BACKOFF_BASE_SECONDS, PAYOUT_MAX_ATTEMPTS, PAYOUT_MAX_PER_RUN, SCHEMAS_DIR
 from controllers.base_controller import BaseController
-from errors import BankUnavailable, InvalidFormat
+from errors import BankUnavailable
 from models import Payout, PayoutAttempt, PayoutStatus, PayoutStatusEvent
 from repositories import PayoutRepository, PayoutTransitionRepository
+from utils.as_of import resolve_as_of
 from utils.schema_handler import validate_json
 
 POST_PAYOUT_RECONCILE_SCHEMA = os.path.join(SCHEMAS_DIR, "post_payout_reconcile.json")
@@ -37,7 +38,7 @@ class PayoutReconcileController(BaseController):
     def run(self, payload: dict) -> dict:
         payload = payload or {}
         validate_json(payload, POST_PAYOUT_RECONCILE_SCHEMA)
-        as_of = self._resolve_as_of(payload)
+        as_of = resolve_as_of(payload)
 
         self.pending_id = self.payout_repository.get_status(PayoutStatus.PENDING).id
         snapshots = self.payout_repository.list_pending_snapshots(self.pending_id)
@@ -167,12 +168,3 @@ class PayoutReconcileController(BaseController):
             return REVERSE
         wait = timedelta(seconds=PAYOUT_BACKOFF_BASE_SECONDS * 2 ** (attempts - 1))
         return ATTEMPT if as_of >= last_attempt_at + wait else WAIT
-
-    @staticmethod
-    def _resolve_as_of(payload: dict) -> datetime:
-        if "as_of" not in payload:
-            return datetime.now(timezone.utc)
-        try:
-            return datetime.fromisoformat(payload["as_of"])
-        except ValueError as error:
-            raise InvalidFormat("as_of", "as_of: not a valid ISO 8601 instant", "esperado data e hora ISO 8601 com fuso") from error
