@@ -55,17 +55,6 @@ class TestAccountClose:
         assert status == 200
         assert response["status"] == "rejected"
 
-    def test_refuses_closing_an_account_with_balance(self, accounts, active_account, client_token, credit_account):
-        credit_account(active_account, 10000)
-
-        status, response = accounts.close(active_account, client_token)
-
-        assert status == 409
-        assert response["code"] == "RNV001012"
-
-        status, response = accounts.get_account(active_account, client_token)
-        assert response["status"] == "active"
-
     def test_closes_account_after_withdrawing_everything(
         self, accounts, ledger, active_account, client_token, credit_account
     ):

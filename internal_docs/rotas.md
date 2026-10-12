@@ -42,6 +42,20 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 | 2 | GET | `/accounts/{account_key}` | cliente | Dados da conta; IDOR → `404 RNV001021`. |
 | 2 | POST | `/accounts/{account_key}/close` | cliente | Encerra; `409 RNV001009` se a conta não está `active`; `422 RNV001035` se tem saldo ou valores em trânsito (payment `held`/payout `pending` no Transferências); `503 RNV000006` se o Transferências não responde (fail-closed). Ordem: lock da conta, status, saldo, consulta in-flight, muda status, commit. |
 
+**`GET /accounts/{account_key}/balance`** (cliente)
+
+- `200 {"account_key", "balance_minor", "currency"}`. O saldo é derivado do ledger (`SUM(credit_minor) - SUM(debit_minor)` das `entry` da conta), nunca armazenado.
+- Leitura passa com a conta `blocked` ou `closed` (a consulta não exige conta `active`).
+- Erros: `401 RNV000003` sem token; `404 RNV001021` para conta inexistente ou de outro cliente (IDOR).
+
+**`GET /accounts/{account_key}/statement`** (cliente)
+
+- Query (todas opcionais, validadas por JSON Schema; parâmetro desconhecido → `400 RNV000001`): `limit` (inteiro de 1 a 100, padrão 50), `cursor` (opaco assinado, o devolvido na resposta anterior), `from` e `to` (ISO-8601 com fuso, filtram `entry.created_at`; `from` depois de `to` → `400 RNV000001`).
+- `200 {"data": [...], "limit", "cursor", "is_last_page"}`, do lançamento mais novo para o mais antigo. Cada item de `data`: `transaction_key`, `type`, `debit_minor`, `credit_minor`, `created_at`. `cursor` é `null` na última página.
+- O cursor é opaco e assinado (HMAC com `CURSOR_SECRET`); cursor inventado ou adulterado → `400 RNV000001`. É o mesmo padrão de paginação de `GET /payments` e das rotas admin.
+- Leitura passa com a conta `blocked` ou `closed`. Só aparecem lançamentos da conta consultada.
+- Erros: `401 RNV000003`; `404 RNV001021` (conta inexistente ou de outro cliente); `400 RNV000001`.
+
 ### Ledger
 
 | Prioridade | Método | Rota | Acesso | Justificativa |
