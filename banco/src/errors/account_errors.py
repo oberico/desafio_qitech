@@ -43,3 +43,14 @@ class AccountNotBlocked(QIException):
         description = "The account is not blocked, so it cannot be unblocked."
         translation = "A conta não está bloqueada, por isso não pode ser desbloqueada."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class AccountHasFundsInFlight(QIException):
+    code = "RNV001035"
+
+    def __init__(self) -> None:
+        title = "Account Has Funds or Values In Transit"
+        http_status = 422
+        description = "The account has a balance or values in transit; closing requires a zero balance and nothing pending."
+        translation = "Conta com saldo ou valores em trânsito; encerramento exige saldo zero e nada pendente."
+        super().__init__(title, self.code, http_status, description, translation)
