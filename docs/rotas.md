@@ -24,7 +24,7 @@ Cada rota tem um tipo de **acesso**, que define como ela é autenticada:
 | **serviço** | header `INTERNAL-TOKEN`, nas rotas `/internal/*` e nas chamadas entre serviços | `403 RNV000002` |
 
 > [!IMPORTANT]
-> O header `Idempotency-Key` é obrigatório em `POST /payments`, `POST /payouts` (1 a 50 caracteres) e `POST /ledger/transactions` (1 a 100). Ausente ou fora do tamanho, a resposta é `400 RNV000012`. As demais escritas (`POST /clients`, `POST /companies`, abertura de conta, `refund`, `close`, `block`/`unblock`, `PUT /internal/payment-methods/{method}` e os jobs) não usam a chave.
+> O header `Idempotency-Key` é obrigatório em `POST /payments`, `POST /payouts` (1 a 50 caracteres) e `POST /ledger/transactions` (1 a 100). Ausente ou fora do tamanho, a resposta é `400 RNV000012`. As demais escritas (`POST /clients`, `POST /companies`, abertura de conta, `refund`, `close`, `block`/`unblock`, `PUT /internal/payment-methods/{method}`, `PUT /internal/payout-fee` e os jobs) não usam a chave.
 
 > [!NOTE]
 > Este documento é a fonte da verdade do contrato da API e está alinhado com a [RFC v8.0](rfc-rnv-v8.0.md) e com o [Catálogo de erros](catalogo-de-erros.md). Em conflito com o código, vale o que está aqui.
@@ -165,7 +165,7 @@ Dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`ent
 ## Transferências
 
 Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o ciclo (janela
-`release_at`, tarifa por `payment_method`, estados). Chama o Banco por conector; nunca FK cruzando serviço.
+`release_at`, taxa por `payment_method`, tarifa de saída em `payout_fee`, estados). Chama o Banco por conector; nunca FK cruzando serviço.
 
 ### Básico (infra / health)
 
@@ -237,17 +237,18 @@ Erros:
 
 | Prioridade | Método | Rota | Acesso | Justificativa |
 |---|---|---|---|---|
-| 1 | POST | `/payouts` | cliente | Saída externa (saque/boleto/transferência); `destination` imutável; debita a conta. |
+| 1 | POST | `/payouts` | cliente | Saída externa (saque/boleto/transferência); `destination` imutável; debita a conta (valor mais tarifa de saída). |
 | 2 | GET | `/payouts/{payout_key}` | cliente | Consulta saque; IDOR → `404 RNV001032`. |
 
 **`POST /payouts` — contrato completo.**
 
 - **Acesso:** cliente (`Authorization`). Header `Idempotency-Key` obrigatório (1 a 50 caracteres), como no `POST /payments`.
 - **Corpo** (JSON Schema na porta, sem campo extra): `account_key` (UUID da conta do cliente), `purpose` (`withdrawal`, `bill_payment` ou `transfer`), `amount_minor` (inteiro) e `destination` (objeto livre, **não vazio**, no máximo 4096 bytes serializado). Não há campo obrigatório por `purpose`. `destination.scenario` é opcional (`confirm`, `refuse`, `timeout`, `flaky`) e é lido só pelo mock interbancário na reconciliação. `company_key` **não** vai no corpo: sai da conta.
-- **Resposta `201`** (novo) ou **`200`** (retry): `{payout_key, company_key, account_key, purpose, destination, status, amount_minor, failure_reason, transaction_key, attempts, last_attempt_at}`. `status` nasce `pending`; `attempts` é o `COUNT` de `payout_attempt`; `last_attempt_at` é `null` até a primeira tentativa. O `destination` é gravado como enviado e **nunca muda**.
+- **Tarifa de saída (cobrada por cima):** o Transferências lê a versão vigente de `payout_fee` e calcula `fee_minor = (amount_minor * fee_bps + 9999) // 10000` (para cima, aritmética inteira, igual para todo `purpose`). O destino recebe `amount_minor` inteiro; a conta do cliente é debitada `amount_minor + fee_minor`. Não há campo de tarifa no corpo: ela nunca vem do cliente.
+- **Resposta `201`** (novo) ou **`200`** (retry): `{payout_key, company_key, account_key, purpose, destination, status, amount_minor, fee_bps, fee_minor, failure_reason, transaction_key, attempts, last_attempt_at}`. `fee_bps` e `fee_minor` são o snapshot gravado no pedido e não mudam mais (retry devolve a tarifa original, mesmo que `payout_fee` tenha mudado). O total debitado é `amount_minor + fee_minor`. `status` nasce `pending`; `attempts` é o `COUNT` de `payout_attempt`; `last_attempt_at` é `null` até a primeira tentativa. O `destination` é gravado como enviado e **nunca muda**.
 - **Autorização:** a `account_key` precisa ser de uma empresa do cliente (senão `404 RNV001018`, sem distinguir inexistente de alheia) e estar `active` (senão `403 RNV001031`). `RNV001030` não se aplica aqui: a conta é identificada pela `account_key`, e empresa sem conta nunca tem uma.
-- **Processamento:** o `INSERT` do `payout` (com `idempotency_key` e `payload_hash`, `UNIQUE(company_key, idempotency_key)`) é a primeira escrita. Depois o Banco recebe o lançamento tipo `payout`, `pending`, chave `payout:<company_key>:<chave>`: D conta do cliente `amount_minor`, C `in_transit` `amount_minor` (saldo conferido sob trava no Banco). Grava `transaction_key`, `payout_status_event` e dá o commit. **Não** chama o mock interbancário: quem executa a saída é `POST /internal/payouts/reconcile`.
-- **Hash do pedido:** `account_key`, `purpose`, `amount_minor` e `destination` (JSON canônico, ordem das chaves irrelevante; inclui `destination.scenario`).
+- **Processamento:** o `INSERT` do `payout` (com `idempotency_key` e `payload_hash`, `UNIQUE(company_key, idempotency_key)`) é a primeira escrita. Depois o Banco recebe o lançamento tipo `payout`, `pending`, chave `payout:<company_key>:<chave>`: D conta do cliente `amount_minor + fee_minor`, C `in_transit` `amount_minor`, C `revenue` `fee_minor` (fecha em partida dobrada; a perna de `revenue` é omitida se `fee_minor` for 0). O saldo é conferido sob trava no Banco contra o total `amount_minor + fee_minor`. O `payout` grava `fee_id` (versão vigente de `payout_fee`), `fee_bps` e `fee_minor` na mesma transação do `INSERT`. Grava `transaction_key`, `payout_status_event` e dá o commit. **Não** chama o mock interbancário: quem executa a saída é `POST /internal/payouts/reconcile`.
+- **Hash do pedido:** `account_key`, `purpose`, `amount_minor` e `destination` (JSON canônico, ordem das chaves irrelevante; inclui `destination.scenario`). A tarifa **não** entra: é derivada do pedido e da versão vigente de `payout_fee`.
 - **Idempotência:** mesma chave e mesmo conteúdo devolve o estado **atual** do payout com `200`; conteúdo diferente, `422 RNV001024`. Falha antes do commit (saldo, Banco fora) dá rollback e libera a chave.
 
 Erros:
@@ -256,9 +257,9 @@ Erros:
 - `401 RNV000003`: token ausente ou inválido.
 - `403 RNV001031`: conta não `active`.
 - `404 RNV001018`: conta inexistente ou de outro cliente (mesmo código de empresa inexistente: a conta é identificada pela empresa do cliente).
-- `422 RNV001023`: `amount_minor` <= 0 ou acima de 9223372036854775807.
+- `422 RNV001023`: `amount_minor` <= 0, ou `amount_minor + fee_minor` acima de 9223372036854775807 (o teto vale para o total debitado).
 - `422 RNV001024`: `Idempotency-Key` reusada com conteúdo diferente.
-- `422 RNV001006`: saldo insuficiente, **repassado do Banco** (mesmo código; o payout não é gravado e a chave fica livre). Outros `422` de negócio do ledger também são repassados como vêm.
+- `422 RNV001006`: saldo insuficiente para `amount_minor + fee_minor`, **repassado do Banco** (mesmo código; o payout não é gravado e a chave fica livre). Outros `422` de negócio do ledger também são repassados como vêm.
 - `503 RNV001017`: Banco indisponível ou sem resposta; retente com a mesma chave (o lançamento `payout:<company_key>:<chave>` é deduplicado no Banco).
 
 **`GET /payouts/{payout_key}` — contrato completo.**
@@ -274,6 +275,7 @@ Erros:
 | 1 | POST | `/internal/settlements` | serviço | Job de liberação: in_transit → cliente ao fim da janela. |
 | 2 | POST | `/internal/payouts/reconcile` | serviço | Job de reconciliação do payout (confirma/falha; reversal ao falhar). |
 | 2 | PUT | `/internal/payment-methods/{method}` | serviço | Define taxa e janela de um meio de pagamento, versionando (append-only). |
+| 2 | PUT | `/internal/payout-fee` | serviço | Define a tarifa de saída (`fee_bps`, única para todo `purpose`), versionando (append-only). Contrato abaixo. |
 | 2 | GET | `/internal/accounts/{account_key}/in-flight` | serviço | Valores em voo da conta: `{"held_payments": n, "pending_payouts": n}`. Chamado pelo Banco no `POST /accounts/{key}/close`. |
 | 2 | POST | `/internal/receipts/reconcile` | serviço | Job de reconciliação de recebimento sem venda: estorna `receipt` órfão no Banco. Contrato abaixo. |
 
@@ -306,6 +308,19 @@ Versionamento:
 - **Snapshot no `payment`:** o `payment` guarda a versão usada (FK para a linha de `payment_method`) e **copia** `fee_bps` e `release_at`. Mudar o método **nunca** altera payments já criados nem o que é cobrado deles: cobra-se a taxa informada ao cliente na venda. O settle continua usando só o snapshot.
 - **Teto de `release_window_hours` (8760 h, 1 ano):** decisão de projeto. Protege contra overflow de data no cálculo de `release_at` e fica muito acima da maior janela atual (720 h).
 - **`fee_bps <= 10000`:** também é `CHECK` na tabela. Sem ele, `fee_bps` acima de 10000 faria o cálculo da tarifa (`split_fee`) levantar `ValueError`, o que daria `500` e abortaria o run inteiro do job de settlement.
+
+**`PUT /internal/payout-fee` — contrato completo.**
+
+- **Acesso:** só `INTERNAL-TOKEN`; sem ele, `403 RNV000002`. Sem parâmetro de caminho: a tarifa de saída é única para todo `purpose`.
+- **Corpo** (JSON Schema na porta, obrigatório, sem campo extra): `{"fee_bps": <int 0..10000>}`. Corpo que não é objeto JSON → `400 RNV000001`; `fee_bps` ausente → `400 RNV000007`; campo extra → `400 RNV000008`; tipo errado (inclusive texto, decimal ou booleano) → `400 RNV000009`; valor fora da faixa → `400 RNV000010`.
+- **Resposta:** `{"version", "fee_bps", "created_at"}`.
+  - `201`: o valor difere da versão atual e uma **nova versão** foi gravada.
+  - `200`: o valor é **igual** ao da versão atual; nada é gravado e a resposta é a versão atual (idempotente).
+- **Append-only e concorrência:** nunca há `UPDATE` em `payout_fee`; cada mudança grava uma linha com `version` incrementada, e a versão **atual** é a de maior `version`. Escritas simultâneas são serializadas por lock na linha da versão atual (mesmo padrão do `payment_method`).
+- **Valor inicial, sem erro novo:** a versão 1 é semeada no `transferencias/database/database.sql` com `fee_bps = 50`, como a do `payment_method`, então sempre existe uma versão vigente.
+- **Snapshot:** o `POST /payouts` grava no `payout` a versão usada (`fee_id`, FK interna para `payout_fee.id`, nunca exposta na resposta) e copia `fee_bps` e `fee_minor`. Mudar a tarifa **nunca** altera payouts já pedidos nem o que é estornado deles na reversal.
+- **`fee_bps <= 10000`:** também é `CHECK` na tabela, pelo mesmo motivo do `payment_method` (cálculo da tarifa sem `ValueError`).
+- **Erros:** `403 RNV000002`; `400 RNV000001`, `RNV000007`, `RNV000008`, `RNV000009`, `RNV000010`. Nenhum código novo.
 
 **`as_of` nos jobs.** Os dois endpoints aceitam corpo opcional para injetar o "agora", de modo que testes e operação não precisem esperar a janela (24h/72h/720h) nem o backoff:
 
@@ -366,9 +381,10 @@ Idempotência: rodar de novo é seguro. A chave é determinística; o Banco devo
 | Estado derivado | Fase | O que faz | Se der certo | Se o Banco recusar/cair |
 |---|---|---|---|---|
 | 0 tentativas, ou último `timeout` com tentativas < 3 e backoff vencido | `attempt` | chama o mock, grava a `payout_attempt`, commit | `confirmed` → fase `settle`; `rejected` → fase `reverse`; `timeout` com tentativas sobrando → fica `pending` (aparece em `pending`); 3º `timeout` → fase `reverse` | (não fala com o Banco) |
-| último `confirmed` | `settle` | lançamento `settlement:<payout_key>` (D `in_transit` / C `reserves`, `settles_transaction_key` = `transaction_key` do payout) | payout `settled` (`payout_transition` + `payout_status_event`, razão `settlement`) | continua `pending`, aparece em `pending`; próximo run repete só o settlement, **sem chamar o mock** |
-| último `rejected`, ou 3 tentativas com último `timeout` | `reverse` | lançamento `reversal:<payout_key>` (D `in_transit` / C conta do cliente, `reverses_transaction_key` = `transaction_key` do payout) | payout `failed` com `failure_reason` `interbank_refused` ou `interbank_timeout` | continua `pending` (ex.: conta bloqueada, `RNV001005`); próximo run repete só a reversal, **sem chamar o mock** |
+| último `confirmed` | `settle` | lançamento `settlement:<payout_key>` (D `in_transit` / C `reserves`, só o `amount_minor`: a tarifa já virou receita no pedido; `settles_transaction_key` = `transaction_key` do payout) | payout `settled` (`payout_transition` + `payout_status_event`, razão `settlement`) | continua `pending`, aparece em `pending`; próximo run repete só o settlement, **sem chamar o mock** |
+| último `rejected`, ou 3 tentativas com último `timeout` | `reverse` | lançamento `reversal:<payout_key>` (D `revenue` `fee_minor` / D `in_transit` `amount_minor` / C conta do cliente `amount_minor + fee_minor`, `reverses_transaction_key` = `transaction_key` do payout; valores do snapshot do payout, perna de `revenue` omitida se `fee_minor` for 0) | payout `failed` com `failure_reason` `interbank_refused` ou `interbank_timeout` | continua `pending` (ex.: conta bloqueada, `RNV001005`); próximo run repete só a reversal, **sem chamar o mock** |
 
+- A reversal devolve valor **e** tarifa: a receita da tarifa é estornada, não fica retida.
 - `failed` só é gravado **junto** da reversal bem-sucedida (ou reencontrada pela chave determinística, que o Banco deduplica). Nunca existe payout `failed` sem reversal.
 - A `transaction` payout original continua `pending` no livro quando há reversal; quem a desfaz é a reversal (`reverses_transaction_id`). No settlement ela vai a `settled`.
 - Fases `settle` e `reverse` **não** esperam backoff (não chamam o mock).

@@ -98,7 +98,12 @@ class TestPayoutValidation:
         assert status == 422
         assert response["code"] == "RNV001023"
 
-    def test_amount_at_bigint_limit_passes_validation_and_meets_the_ledger(self, payouts, payout_payload):
+    def test_amount_whose_total_with_the_fee_is_above_bigint_is_refused(self, payouts, payout_payload):
         status, response = payouts.post_payout(payout_payload(amount_minor=BIGINT_MAX), str(uuid4()))
+        assert status == 422
+        assert response["code"] == "RNV001023"
+
+    def test_total_below_bigint_passes_validation_and_meets_the_ledger(self, payouts, payout_payload):
+        status, response = payouts.post_payout(payout_payload(amount_minor=BIGINT_MAX // 2), str(uuid4()))
         assert status == 422
         assert response["code"] == "RNV001006"

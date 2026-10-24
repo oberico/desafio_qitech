@@ -92,7 +92,7 @@ Todo erro da API tem o mesmo formato:
 | Código | HTTP | Mensagem |
 |---|---|---|
 | RNV001015 | 422 | Lançamentos não fecham (débito ≠ crédito) |
-| RNV001006 | 422 | Saldo insuficiente (também devolvido pelo `POST /payouts`, repassado do Banco) |
+| RNV001006 | 422 | Saldo insuficiente (também devolvido pelo `POST /payouts`, repassado do Banco; no payout a conferência é sobre `amount_minor` mais a tarifa de saída) |
 | RNV001014 | 409 | Transação já consumida (saída única). A tradução diz qual: `já foi liquidada` (há settlement) ou `já foi estornada` (há refund/reversal) |
 | RNV001016 | 404 | Transação referenciada inexistente |
 | RNV001024 | 422 | Idempotency-Key reusada com conteúdo diferente |
@@ -110,7 +110,7 @@ de schema/auth e dos erros do ledger quando o lançamento é propagado ao Banco.
 
 | Código | HTTP | Mensagem |
 |---|---|---|
-| RNV001023 | 422 | Valor inválido. A tradução diz o motivo: `O valor precisa ser maior que zero.` (`amount_minor` <= 0) ou `O valor passa do máximo permitido de 9223372036854775807 centavos.` (teto do BIGINT) |
+| RNV001023 | 422 | Valor inválido. A tradução diz o motivo: `O valor precisa ser maior que zero.` (`amount_minor` <= 0) ou `O valor passa do máximo permitido de 9223372036854775807 centavos.` (teto do BIGINT). No `POST /payouts` o teto vale para o total debitado, `amount_minor` mais a tarifa de saída |
 | RNV001025 | 404 | Pagamento inexistente ou de outro lojista |
 | RNV001026 | 409 | Fora da janela (valor já liberado) |
 | RNV001003 | 409 | Pagamento já estornado |
@@ -124,7 +124,7 @@ de schema/auth e dos erros do ledger quando o lançamento é propagado ao Banco.
 
 Erros possíveis no `POST /payouts`: os de formato (`RNV000001`, `RNV000007` a `RNV000010`, `RNV000012`), `RNV000003`, `RNV001018` (conta inexistente
 ou de outro cliente, reaproveitando o código de empresa inexistente), `RNV001031` (conta não active), `RNV001023`, `RNV001024`, `RNV001006` (saldo
-insuficiente, repassado do Banco) e `RNV001017` (Banco indisponível). `RNV001030` não se aplica.
+insuficiente para valor mais tarifa, repassado do Banco) e `RNV001017` (Banco indisponível). `RNV001030` não se aplica. A tarifa de saída não criou código novo; o `PUT /internal/payout-fee` usa só `RNV000002` e os de formato `RNV000001`, `RNV000007` a `RNV000010`.
 
 ## Admin
 

@@ -41,6 +41,16 @@ class BankRequests:
         headers = {"INTERNAL-TOKEN": internal_token, "Idempotency-Key": idempotency_key}
         return self.api.post("/ledger/transactions", payload, headers)
 
+    def get_balance_minor(self, account_key: str, token: str) -> int:
+        status, response = self.api.get(f"/accounts/{account_key}/balance", self._auth(token))
+        assert status == 200, f"não deu para ler o saldo no Banco: {status} {response}"
+        return response["balance_minor"]
+
+    def get_revenue_minor(self, admin_token: str) -> int:
+        status, response = self.api.get("/admin/internal-accounts", self._auth(admin_token))
+        assert status == 200, f"não deu para ler as contas internas no Banco: {status} {response}"
+        return response["revenue_minor"]
+
     @staticmethod
     def _auth(token: str) -> dict:
         return {"Authorization": f"Bearer {token}"}

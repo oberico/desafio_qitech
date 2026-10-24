@@ -42,7 +42,7 @@ class TestPayoutInsufficientFunds:
         assert status == 201
         assert payout["status"] == "pending"
 
-    def test_balance_exactly_equal_to_the_amount_is_enough(self, payouts, payout_payload):
-        status, response = payouts.post_payout(payout_payload(funding_minor=1000, amount_minor=1000), str(uuid4()))
+    def test_balance_exactly_equal_to_the_amount_plus_the_fee_is_enough(self, payouts, payout_payload):
+        status, response = payouts.post_payout(payout_payload(funding_minor=1005, amount_minor=1000), str(uuid4()))
         assert status == 201
         assert response["amount_minor"] == 1000

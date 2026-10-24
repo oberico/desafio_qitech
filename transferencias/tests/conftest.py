@@ -5,6 +5,8 @@ import requests
 
 from tests.utils.admin_requests import AdminRequests
 from tests.utils.bank_requests import BankRequests
+from tests.utils.payout_fee import SEEDED_FEE_BPS
+from tests.utils.payout_fee_requests import PayoutFeeRequests
 from tests.utils.payload_generator import PayloadGenerator
 from tests.utils.payment_requests import PaymentRequests
 from tests.utils.request_generator import RequestGenerator
@@ -82,3 +84,25 @@ def payment_payload(bank, client_token):
         return PayloadGenerator.create_payment_payload(company_key=company_key, **overrides)
 
     return _build
+
+
+@pytest.fixture(scope="session")
+def payout_fees(api, internal_token) -> PayoutFeeRequests:
+    return PayoutFeeRequests(api, internal_token)
+
+
+@pytest.fixture
+def changed_payout_fee(payout_fees):
+    touched = []
+
+    def _change(fee_bps: int) -> tuple:
+        touched.append(fee_bps)
+        status, response = payout_fees.put(fee_bps)
+        assert status in (200, 201), f"could not change the payout fee: {status} {response}"
+        return status, response
+
+    try:
+        yield _change
+    finally:
+        if touched:
+            payout_fees.put(SEEDED_FEE_BPS)

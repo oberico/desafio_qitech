@@ -10,6 +10,8 @@ RESPONSE_FIELDS = {
     "destination",
     "status",
     "amount_minor",
+    "fee_bps",
+    "fee_minor",
     "failure_reason",
     "transaction_key",
     "attempts",
@@ -73,7 +75,7 @@ class TestPayoutCreate:
         assert transaction["status"] == "pending"
 
     def test_debit_leaves_the_account_without_the_funds(self, payouts, payout_payload):
-        payload = payout_payload(funding_minor=1000, amount_minor=1000)
+        payload = payout_payload(funding_minor=1000, amount_minor=995)
         status, _ = payouts.post_payout(payload, str(uuid4()))
         assert status == 201
 

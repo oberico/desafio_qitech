@@ -80,7 +80,7 @@ class TestPayoutIdempotency:
 
     def test_retry_does_not_debit_twice(self, payouts, payout_payload):
         key = str(uuid4())
-        payload = payout_payload(funding_minor=1000, amount_minor=1000)
+        payload = payout_payload(funding_minor=1000, amount_minor=995)
 
         status, _ = payouts.post_payout(payload, key)
         assert status == 201
@@ -93,7 +93,7 @@ class TestPayoutIdempotency:
 
     def test_concurrent_requests_create_one_payout_and_one_debit(self, payouts, payout_payload, bank, internal_token):
         key = str(uuid4())
-        payload = payout_payload(funding_minor=1000, amount_minor=1000)
+        payload = payout_payload(funding_minor=1000, amount_minor=995)
 
         with ThreadPoolExecutor(max_workers=10) as pool:
             results = list(pool.map(lambda _: payouts.post_payout(payload, key), range(10)))

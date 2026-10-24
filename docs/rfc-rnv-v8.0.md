@@ -8,14 +8,14 @@
 
 ## 1. Visão geral
 
-Somos uma **instituição de pagamento** para pequenas empresas. O lojista abre conta conosco e recebe vendas pelo nosso gateway (pix, boleto, cartão). Não oferecemos crédito: só guardamos e movimentamos dinheiro de terceiros. **Só é cliente do gateway quem tem conta conosco.** O dinheiro entra pelo gateway, fica retido por uma janela, é liberado na conta do lojista com a taxa descontada, e sai quando o lojista pede (saque, pagamento de boleto ou transferência para fora do banco).
+Somos uma **instituição de pagamento** para pequenas empresas. O lojista abre conta conosco e recebe vendas pelo nosso gateway (pix, boleto, cartão). Não oferecemos crédito: só guardamos e movimentamos dinheiro de terceiros. **Só é cliente do gateway quem tem conta conosco.** O dinheiro entra pelo gateway, fica retido por uma janela, é liberado na conta do lojista com a taxa descontada, e sai quando o lojista pede (saque, pagamento de boleto ou transferência para fora do banco), com uma tarifa de saída cobrada por cima do valor enviado.
 
 O sistema existe para dar quatro garantias:
 
 - **O livro sempre fecha:** em toda transação, soma dos débitos = soma dos créditos, inclusive quando o dinheiro vem de fora ou vai para fora.
 - **O saldo nunca diverge nem fica negativo:** é derivado do livro imutável, e o débito só acontece com saldo conferido sob trava.
 - **Nada acontece duas vezes:** um pedido repetido não move dinheiro de novo, e cada venda tem uma saída só (liberada **ou** estornada).
-- **Tudo é auditável:** a taxa aplicada e o destino de cada saída ficam gravados no registro da operação e não mudam depois; a equação do livro é consultável a qualquer momento.
+- **Tudo é auditável:** a taxa da venda, a tarifa da saída e o destino de cada saída ficam gravados no registro da operação e não mudam depois; a equação do livro é consultável a qualquer momento.
 
 **Fora do escopo:** crédito, câmbio, conta em outro banco como entidade gerenciada, movimentação entre clientes sem o dinheiro sair do banco, e a integração real com o interbancário e com o birô (os dois são simulados).
 
@@ -24,7 +24,7 @@ O sistema existe para dar quatro garantias:
 | Serviço | Papel | Dono de |
 |---|---|---|
 | **Banco** | motor do livro e da identidade | `client`, `company`, `account`, `api_token`, `transaction`, `entry` |
-| **Transferências** | borda do produto | `payment`, `payout`, `payout_attempt`, tarifas e janelas, os jobs de liberação e reconciliação |
+| **Transferências** | borda do produto | `payment`, `payout`, `payout_attempt`, tarifas (`payment_method`, `payout_fee`) e janelas, os jobs de liberação e reconciliação |
 | **external-mocks** | simula o interbancário | nada persistente: estado em memória |
 
 O Transferências decide *o quê* lançar e chama o Banco; o Banco executa os lançamentos, garante que fecham, deduplica pela chave e confere o saldo sob trava. **O dinheiro tem um dono só**: nenhuma operação escreve nos dois bancos de dados, então não existe transação distribuída. Entre os serviços só trafega a chave pública (UUID), nunca `id` interno nem FK.
@@ -33,7 +33,7 @@ A **identidade** segue a mesma regra. O token nasce no Banco (`POST /clients`); 
 
 As chamadas entre serviços usam `INTERNAL-TOKEN` e vão quase todas do Transferências para o Banco. **Há uma exceção, consciente:** para encerrar uma conta, o Banco pergunta ao Transferências se há valores em trânsito (seção 5.5).
 
-**O payout é sempre uma saída do dinheiro para fora do banco.** Saque, pagamento de boleto e transferência são rótulos do mesmo fluxo, com um `destination` externo que nunca muda depois de gravado. Como a saída pode falhar, o lançamento nasce `pending` e, se o repasse falhar, é desfeito por uma `reversal` (seção 5.4).
+**O payout é sempre uma saída do dinheiro para fora do banco.** Saque, pagamento de boleto e transferência são rótulos do mesmo fluxo, com um `destination` externo que nunca muda depois de gravado e uma tarifa de saída única, igual para todo `purpose`. Como a saída pode falhar, o lançamento nasce `pending` e, se o repasse falhar, é desfeito por uma `reversal` (seção 5.4).
 
 **As contas do livro.** O livro fecha porque toda entrada e saída tem contrapartida numa conta do próprio banco:
 
@@ -41,14 +41,14 @@ As chamadas entre serviços usam `INTERNAL-TOKEN` e vão quase todas do Transfer
 |---|---|---|
 | Caixa (`reserves`) | ATIVO | o dinheiro que o banco de fato tem |
 | Trânsito (`in_transit`) | PASSIVO | recebido e ainda na janela, ou pedido e ainda não saído |
-| Receita (`revenue`) | RECEITA | as taxas cobradas |
+| Receita (`revenue`) | RECEITA | as taxas de venda e as tarifas de saída cobradas |
 | Cliente (`business`, uma por empresa) | PASSIVO | o que o banco deve a cada lojista |
 
 A equação que vale a qualquer instante: **TEM = DEVE + GANHOU** (Caixa = Trânsito + Clientes + Receita). O `GET /admin/internal-accounts` devolve os quatro totais e `equation_ok`.
 
 ## 2. Fluxo ponta a ponta
 
-Um pix de **R$ 1.000,00** com a taxa real do pix (0,99%, `fee_bps = 99`, janela de 24 h), do cadastro até a conta ser encerrada. Valores em reais para leitura; no banco tudo é centavo inteiro.
+Um pix de **R$ 1.000,00** com a taxa real do pix (0,99%, `fee_bps = 99`, janela de 24 h), do cadastro até a conta ser encerrada. O lojista saca o saldo inteiro, pagando a tarifa de saída; nos números abaixo ela vale 0,50% (`fee_bps = 50`), o valor da versão 1 de `payout_fee` semeada no banco (seção 5.3). Valores em reais para leitura; no banco tudo é centavo inteiro.
 
 | # | Endpoint (serviço) | Quem dispara | O que nasce | Lançamentos |
 |---|---|---|---|---|
@@ -57,8 +57,8 @@ Um pix de **R$ 1.000,00** com a taxa real do pix (0,99%, `fee_bps = 99`, janela 
 | 3 | `POST /payments` + `Idempotency-Key` (Transferências → Banco) | o site do lojista | `payment` **held**, com `fee_bps` e `release_at` **snapshotados** da versão vigente do meio de pagamento; `transaction` **receipt** | D Caixa 1.000,00 · C Trânsito 1.000,00 |
 | 4 | — | o relógio | nada. O lojista vê R$ 1.000,00 "a receber", que **ainda não é saldo** | — |
 | 5 | `POST /internal/settlements` (Transferências → Banco) | job, quando `release_at` vence | `transaction` **settlement**; `payment → settled` | D Trânsito 990,10 · D Trânsito 9,90 · C Cliente 990,10 · C Receita 9,90 |
-| 6 | `POST /payouts` + `Idempotency-Key` (Transferências → Banco) | o lojista, com finalidade e destino | `transaction` **payout**, `pending` (saldo conferido sob trava); `payout` **pending** com o destino gravado | D Cliente 990,10 · C Trânsito 990,10 |
-| 7 | `POST /internal/payouts/reconcile` (Transferências → interbancário → Banco) | job; o interbancário confirma | `payout_attempt` `confirmed`; `transaction` **settlement**; a `payout` vai `pending → settled`; `payout → settled` | D Trânsito 990,10 · C Caixa 990,10 |
+| 6 | `POST /payouts` + `Idempotency-Key` (Transferências → Banco) | o lojista, com finalidade, destino e `amount_minor` de R$ 985,17 | `transaction` **payout**, `pending` (saldo conferido sob trava, considerando valor **mais** tarifa); `payout` **pending** com o destino, `fee_bps` e `fee_minor` (R$ 4,93) gravados | D Cliente 990,10 · C Trânsito 985,17 · C Receita 4,93 |
+| 7 | `POST /internal/payouts/reconcile` (Transferências → interbancário → Banco) | job; o interbancário confirma | `payout_attempt` `confirmed`; `transaction` **settlement**; `payout → settled` | D Trânsito 985,17 · C Caixa 985,17 |
 | 8 | `POST /accounts/{key}/close` (Banco → Transferências) | o responsável | o Banco confere saldo zero e pergunta ao Transferências se há algo em trânsito; `account → closed` | — |
 
 **O livro fechando em cada passo:**
@@ -67,17 +67,17 @@ Um pix de **R$ 1.000,00** com a taxa real do pix (0,99%, `fee_bps = 99`, janela 
 |---|---|---|---|---|---|
 | 3 | 1.000,00 | 1.000,00 | 0 | 0 | 1.000,00 = 1.000,00 |
 | 5 | 1.000,00 | 0 | 990,10 | 9,90 | 1.000,00 = 990,10 + 9,90 |
-| 6 | 1.000,00 | 990,10 | 0 | 9,90 | 1.000,00 = 990,10 + 9,90 |
-| 7 | 9,90 | 0 | 0 | 9,90 | 9,90 = 9,90 |
+| 6 | 1.000,00 | 985,17 | 0 | 14,83 | 1.000,00 = 985,17 + 14,83 |
+| 7 | 14,83 | 0 | 0 | 14,83 | 14,83 = 14,83 |
 
-No fim, o banco tem em caixa exatamente o que ganhou. O resto entrou e saiu. Uma história equivalente, com vendas nos três meios, estorno e saque recusado, roda de forma executável na coleção [`rnv-ponta-a-ponta.postman_collection.json`](postman/rnv-ponta-a-ponta.postman_collection.json), que confere os saldos e a equação do livro a cada passo.
+No passo 6, a tarifa nasce com o pedido: o destino vai receber os R$ 985,17 inteiros e o cliente paga R$ 4,93 por cima (`985,17 + 4,93 = 990,10`). A receita sobe de 9,90 para 14,83 já no pedido, mesmo que a saída ainda possa falhar (ver o caminho de recusa abaixo). No fim, o banco tem em caixa exatamente o que ganhou (9,90 da venda e 4,93 da saída). O resto entrou e saiu. Uma história equivalente, com vendas nos três meios, estorno e saque recusado, roda de forma executável na coleção [`rnv-ponta-a-ponta.postman_collection.json`](postman/rnv-ponta-a-ponta.postman_collection.json), que confere os saldos e a equação do livro a cada passo.
 
 **Caminhos alternativos:**
 
 - **Estorno dentro da janela** (`POST /payments/{key}/refund`): nasce uma `transaction` **refund** com `reverses_transaction_id` apontando para a `receipt`. Lançamentos: D Trânsito 1.000,00 · C Caixa 1.000,00, **valor cheio**, porque a taxa ainda não foi cobrada. `payment → refunded`. Quem decide é o **status**, não o relógio: enquanto o job não liberou, o payment segue `held` e o estorno passa, mesmo com `release_at` vencido. Depois de `settled`, o estorno é recusado (`409 RNV001026`).
-- **Saldo insuficiente no passo 6:** o Banco recusa (`422 RNV001006`), o Transferências repassa o erro, nenhuma linha é gravada e a chave do cliente fica livre.
-- **Recusa definitiva do interbancário no passo 7:** `payout → failed` na hora, com uma `transaction` **reversal** apontando para a `payout`: D Trânsito 990,10 · C Cliente 990,10. O dinheiro volta para a conta do lojista.
-- **Interbancário sem resposta no passo 7:** a reconciliação retenta com espera crescente (60 s, depois 120 s). Na **3ª tentativa sem resposta**, `failed` + reversal, como na recusa (seção 5.4).
+- **Saldo insuficiente no passo 6:** a conferência é sobre `amount_minor + fee_minor`, não só o valor enviado (pedir R$ 990,10 com saldo de R$ 990,10 falha, porque o total seria R$ 995,06, com tarifa de R$ 4,96). O Banco recusa (`422 RNV001006`), o Transferências repassa o erro, nenhuma linha é gravada e a chave do cliente fica livre.
+- **Recusa definitiva do interbancário no passo 7:** `payout → failed` na hora, com uma `transaction` **reversal** apontando para a `payout`: D Receita 4,93 · D Trânsito 985,17 · C Cliente 990,10. O lojista recebe de volta o valor **e** a tarifa: o serviço de saída não foi prestado, então a receita é estornada (a Receita volta a 9,90). Na `payout` ficam gravados o `fee_bps` e o `fee_minor` originais.
+- **Interbancário sem resposta no passo 7:** a reconciliação retenta com espera crescente (60 s, depois 120 s). Na **3ª tentativa sem resposta**, `failed` + reversal, como na recusa, devolvendo valor e tarifa (seção 5.4).
 - **Encerramento com algo em trânsito no passo 8:** se houver venda `held` ou saque `pending`, o encerramento é recusado (`422 RNV001035`), mesmo com saldo zero.
 
 ## 3. Modelo de dados
@@ -114,6 +114,7 @@ erDiagram
 ```mermaid
 erDiagram
     payment_method ||--o{ payment : "versao usada"
+    payout_fee ||--o{ payout : "versao usada"
     payout ||--o{ payout_attempt : "tentativas"
 
     payment_method {
@@ -129,8 +130,15 @@ erDiagram
         timestamptz release_at "snapshot"
         varchar50 idempotency_key "UK com company_key"
     }
+    payout_fee {
+        integer version "UK, append-only"
+        integer fee_bps "tarifa unica de saida"
+    }
     payout {
         char36 payout_key UK
+        integer fee_id FK "versao de payout_fee usada"
+        integer fee_bps "snapshot"
+        bigint fee_minor "snapshot; cobrado por cima do amount_minor"
         jsonb destination "imutavel"
         timestamptz last_attempt_at "base do backoff"
         varchar50 idempotency_key "UK com company_key"
@@ -197,7 +205,7 @@ COMMIT;
 4. **Duas contas de cliente na mesma operação:** travar sempre na ordem do **id menor primeiro**. Nenhum fluxo desta versão debita duas contas de cliente, mas a regra fica fixada para evitar *deadlock* quando existir movimentação entre clientes.
 5. **Crédito não trava**, e **conta interna nunca é travada**: travar o Trânsito ou o Caixa serializaria o sistema inteiro.
 6. **Isolamento READ COMMITTED** (o padrão do Postgres). O `SUM` executado **depois** da trava enxerga o débito que o pedido anterior acabou de commitar. Em REPEATABLE READ a foto seria a do começo da transação e o bug voltaria.
-7. **Outras linhas que servem de portão:** a linha do `payment` (estorno × liberação), a do `payout` (rodadas simultâneas da reconciliação), a da `transaction` referenciada (duas liquidações da mesma venda) e a da última versão do `payment_method` (duas mudanças de taxa ao mesmo tempo). Os `UNIQUE` (`settles_transaction_id`, `reverses_transaction_id`, `(payout_id, attempt_number)`, `account.company_id`) são a rede de proteção atrás de cada trava.
+7. **Outras linhas que servem de portão:** a linha do `payment` (estorno × liberação), a do `payout` (rodadas simultâneas da reconciliação), a da `transaction` referenciada (duas liquidações da mesma venda) e a da última versão do `payment_method` ou do `payout_fee` (duas mudanças de taxa ao mesmo tempo). Os `UNIQUE` (`settles_transaction_id`, `reverses_transaction_id`, `(payout_id, attempt_number)`, `account.company_id`) são a rede de proteção atrás de cada trava.
 
 **Perguntas de estresse:**
 
@@ -240,20 +248,23 @@ COMMIT;
 - **Snapshot na chegada.** O `payment` aponta para a versão usada e copia `fee_bps` e `release_at`. O *settle* usa só o snapshot. Mudar a taxa nunca altera o que já foi vendido: cobra-se a taxa informada ao cliente na venda, e dá para provar qual foi.
 - **Cobrada na liberação.** Durante a janela o dinheiro fica retido **cheio** no Trânsito, porque um estorno devolve o valor integral.
 - **Centavo inteiro e aritmética inteira, nunca *float* nem `round()`.** `fee = (amount_minor × fee_bps + 9999) // 10000` e `net = amount_minor − fee`. A taxa arredonda **para cima** e o centavo residual fica com o cliente. **Invariante:** `fee + net = amount_minor`, exato. Pernas de valor zero são omitidas do lançamento (o livro exige ao menos 1 centavo por perna).
+- **A saída tem tarifa própria, cobrada por cima.** Uma única tarifa percentual para todo `purpose` (saque, boleto e transferência), guardada como dado na tabela `payout_fee`, versionada e append-only como o `payment_method`, com a versão 1 (`fee_bps = 50`) semeada no `database.sql` do Transferências, de modo que sempre há versão vigente: `PUT /internal/payout-fee` grava uma linha nova com `version + 1`; valor igual ao atual responde `200` sem gravar. A conta é a mesma, `fee_minor = (amount_minor × fee_bps + 9999) // 10000`, arredondada para cima. A diferença está em quem paga: na venda a taxa **sai** do valor (`net = amount − fee`); na saída o destino recebe o `amount_minor` **inteiro** e o cliente é debitado `amount_minor + fee_minor`. **Invariante:** `debitado = amount_minor + fee_minor`, exato; o livro fecha porque D (cliente) = C (Trânsito) + C (Receita).
+- **Snapshot no pedido.** O `payout` aponta para a versão usada (`fee_id`, `NOT NULL`, como o `payment` aponta para o `payment_method`) e copia `fee_bps` e `fee_minor` na hora do `POST /payouts` e não muda mais: o settlement não recalcula nada (continua D Trânsito / C Caixa só do `amount_minor`), e a reversal usa o `fee_minor` gravado. Mudar a tarifa depois nunca altera um saque já pedido. Retry com a mesma `Idempotency-Key` devolve a tarifa original, pois a tarifa é derivada do pedido e não entra no `payload_hash`.
+- **Cobrada no pedido, devolvida na falha.** A receita nasce junto com o débito (passo 6 da seção 2), e não na liquidação, porque o cliente é cobrado quando pede. Se o saque falha, a reversal estorna valor e tarifa (seção 5.4): a tarifa não fica retida.
 
 ### 5.4 A saída do dinheiro: reconciliação do payout
 
-O `POST /payouts` só debita a conta e grava o pedido. Quem leva o dinheiro para fora é o job `POST /internal/payouts/reconcile`, que chama o interbancário para cada payout `pending`.
+O `POST /payouts` só debita a conta (valor mais tarifa), lança a receita da tarifa e grava o pedido. Quem leva o dinheiro para fora é o job `POST /internal/payouts/reconcile`, que chama o interbancário para cada payout `pending`.
 
 **A fase é derivada, nunca guardada.** O que fazer com um payout sai da última `payout_attempt` e do número de tentativas (`COUNT`), não de um campo mutável:
 
 | Estado derivado | Fase | O que faz |
 |---|---|---|
 | nenhuma tentativa, ou último `timeout` com menos de 3 e espera vencida | tentar | chama o interbancário e grava a `payout_attempt` antes de qualquer lançamento |
-| último `confirmed` | liquidar | `settlement:<payout_key>` (D Trânsito / C Caixa); `payout → settled` |
-| último `rejected`, ou 3 tentativas terminando em `timeout` | desfazer | `reversal:<payout_key>` (D Trânsito / C Cliente); `payout → failed` com o motivo |
+| último `confirmed` | liquidar | `settlement:<payout_key>` (D Trânsito / C Caixa, só o `amount_minor`; a tarifa já é receita desde o pedido); `payout → settled` |
+| último `rejected`, ou 3 tentativas terminando em `timeout` | desfazer | `reversal:<payout_key>` (D Receita `fee_minor` / D Trânsito `amount_minor` / C Cliente `amount_minor + fee_minor`); `payout → failed` com o motivo |
 
-- **`failed` só existe junto da reversal.** Se o Banco recusar a reversal (conta bloqueada) ou estiver fora, o payout continua `pending` e o próximo run repete só a reversal, sem chamar o interbancário de novo. Nunca há saque falho sem o dinheiro de volta.
+- **`failed` só existe junto da reversal.** Se o Banco recusar a reversal (conta bloqueada) ou estiver fora, o payout continua `pending` e o próximo run repete só a reversal, sem chamar o interbancário de novo. Nunca há saque falho sem o dinheiro de volta, tarifa incluída. A perna de Receita some do lançamento quando `fee_minor` é 0 (tarifa configurada em 0 bps).
 - **Retentativa com espera crescente:** 60 s após a 1ª tentativa, 120 s após a 2ª, limite de 3 (configuração). Classificação do interbancário: `200` é confirmado, `422 refused` é recusa definitiva, e qualquer outra coisa (timeout de 5 s, erro de conexão, `5xx`) é timeout, o caminho seguro para o dinheiro do lojista.
 - **Teto por run:** no máximo 50 payouts por chamada; o resto fica para o próximo.
 - **Concorrência:** cada payout é tratado em transação própria, com a linha travada e o status relido. Dois runs simultâneos não fazem tentativa dupla nem lançamento dobrado.
@@ -275,7 +286,7 @@ Quem sabe o que está em trânsito é o Transferências. Por isso o Banco, ao en
 
 ### 5.6 Limites de valor
 
-Todo valor tem teto validado por JSON Schema na entrada, para que um valor extremo vire `400` ou `422` e nunca um `500`: valores até o teto do `BIGINT`, de 2 a 20 pernas por lançamento, `destination` até 4096 bytes, `fee_bps` até 10000 e janela até 8760 h. A tabela completa está em [`rotas.md`](rotas.md).
+Todo valor tem teto validado por JSON Schema na entrada, para que um valor extremo vire `400` ou `422` e nunca um `500`: valores até o teto do `BIGINT` (no payout, o teto vale para `amount_minor + fee_minor`, o total debitado), de 2 a 20 pernas por lançamento, `destination` até 4096 bytes, `fee_bps` até 10000 e janela até 8760 h. A tabela completa está em [`rotas.md`](rotas.md).
 
 ## 6. Tradeoffs e alternativas descartadas
 
@@ -284,6 +295,8 @@ Todo valor tem teto validado por JSON Schema na entrada, para que um valor extre
 - **Banco consultando o Transferências no encerramento** — aceito, como única exceção à direção das chamadas. Duplicar no Banco o estado das vendas e saques seria pior que uma chamada fail-closed numa operação rara.
 - **Cliente com conta em outro banco** — descartado. Era complexidade sem ganho conceitual; a saída do dinheiro existe, com o destino dado na requisição.
 - **`failed` no status do livro** — descartado. No livro, ou o dinheiro se moveu, ou o movimento foi desfeito por uma transação nova (`refund` para o recebimento, `reversal` para o payout). O estorno não muda o status do original. O `failed` existe só no `payout_status`.
+- **Tarifa de saída "por dentro" (destino recebe `amount − fee`)** — descartada. Por cima é mais simples de explicar ao lojista ("pedi R$ X, o destino recebeu R$ X") e mantém o `amount_minor` do pedido igual ao do interbancário. O custo é o lojista precisar de saldo para valor mais tarifa para sacar tudo.
+- **Tarifa de saída por `purpose`** — descartada por enquanto. Uma tarifa única como dado; separar por finalidade seria uma coluna a mais em `payout_fee`, sem mudar o fluxo.
 - **Duas colunas (`debit_minor`/`credit_minor`) em vez de um `amount` com sinal** — mantidas. O `CHECK` garante exatamente uma preenchida e nenhuma negativa.
 - **Tabela de idempotência genérica** — descartada em favor da chave na própria entidade. O custo é o retry refletir o estado atual em vez de uma foto da resposta.
 - **`retry_count` no `payout`** — descartado. O número de tentativas já está nas linhas de `payout_attempt`; um contador mutável poderia divergir.
@@ -314,3 +327,9 @@ O detalhamento, com números e caminho de evolução, está em [`limites-e-evolu
 | Micro-centavos da taxa | Arredondamento para cima, com o invariante `fee + net = amount` |
 | "A taxa é feature ou tabela?" | Tabela por meio de pagamento, com snapshot no `payment` |
 | Birô validando a cada etapa | Valida a empresa uma vez, na abertura da conta |
+
+## 9. Parecer da banca (fase 1)
+
+| O que a banca apontou | O que mudou |
+|---|---|
+| **ESC-01:** o pagamento para fora do banco controla o saldo, mas não cobra tarifa (item 4 do escopo mínimo) | Tarifa de saída: `fee_minor` por cima do `amount_minor`, com a perna de Receita no lançamento do `POST /payouts`, snapshot no `payout` e estorno junto com a reversal (seções 2, 5.3 e 5.4). Configuração em `payout_fee`, via `PUT /internal/payout-fee` ([`rotas.md`](rotas.md)). Em implementação (TDD): a spec vem antes do código |
