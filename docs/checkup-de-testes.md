@@ -1,6 +1,9 @@
 # Checkup de testes
 
-Retrato da suíte em **2026-10-12**, com a reconciliação de recebimento sem venda incluída. Todos os testes são de integração caixa-preta: falam com as APIs por HTTP, como um cliente, e nunca importam código de `src/`. Cada rota nasceu de um teste que falhou primeiro (TDD).
+Retrato da suíte em **2026-10-12**, com a reconciliação de recebimento sem venda incluída. Os testes são de integração caixa-preta: falam com as APIs por HTTP, como um cliente. Em 2026-10-24 uma busca por `TestClient`, `from src` e `import src` em todos os `tests/` não achou nenhum import de `src/` nem uso do `TestClient` do framework. Cada rota nasceu de um teste que falhou primeiro (TDD).
+
+> [!NOTE]
+> **Parecer da banca (`avaliacao.md`, commit `161ffef`) x este checkup.** A banca contou 516 testes de integração e registrou "36/36" no COD-01 (a suíte sobe e passa); este checkup contou 864 testes em 2026-10-12. Os números ainda não foram reconciliados: o método de contagem da banca não é conhecido. O COD-04 apontou 4 arquivos com `TestClient` (`banco/tests/integration/client/test_client_create.py`, `.../client/test_client_me.py`, `.../middleware/test_client_auth.py` e `transferencias/tests/integration/middleware/test_client_auth.py`). Nesses arquivos a ocorrência é só o nome de classe (`TestClientCreate`, `TestClientMe`, `TestClientAuth`): não há `TestClient` do framework nem import de `src/`. Tudo indica falso positivo da detecção por texto; falta confirmar com a banca. O COD-08 (145/145) concorda: nenhum teste importa `src/`.
 
 ## 1. Resumo
 

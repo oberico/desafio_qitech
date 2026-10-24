@@ -143,8 +143,8 @@ Ver seção 2. Limite: o Transferências não sabe se o Banco commitou; o desfec
 ### (f) Mocks em memória e `as_of` fora da RFC
 
 - **Mocks:** o `external-mocks` guarda `transfer_id` e o contador do cenário `flaky` em memória; reiniciar o container zera tudo (`mocks-externos.md`, "Limites aceitos"). O risco "o mock pagou, mas a resposta se perdeu" não existe aqui; contra um banco real, a RFC §2 o registra como risco aceito (consultar o status no destino antes do `failed` por timeout). O birô ainda é um mock dentro do Banco.
-- **`as_of`:** corpo opcional de `POST /internal/settlements` e `POST /internal/payouts/reconcile`, que injeta o "agora". **Não está na RFC v7.2**, que só fala em "o relógio" (`rotas.md`, notas finais). Só vale com `INTERNAL-TOKEN` e existe para testar sem esperar a janela (24h/72h/720h) e o backoff. Risco: um operador com o token pode antecipar a liberação de um pagamento; é um refino que precisa de aprovação do grupo e de ficar fora do caminho do cliente (hoje já é).
-- **Evolução:** trocar o mock por integração real exige a consulta de status no destino; `as_of` entra na RFC ou sai quando houver um relógio injetável de outra forma.
+- **`as_of`:** corpo opcional de `POST /internal/settlements` e `POST /internal/payouts/reconcile`, que injeta o "agora". Está descrito na RFC v8.0 (§5.4, "O relógio dos jobs") e em `rotas.md`. Só vale com `INTERNAL-TOKEN` e existe para testar sem esperar a janela (24h/72h/720h) e o backoff. Risco: um operador com o token pode antecipar a liberação de um pagamento; precisa ficar fora do caminho do cliente (hoje já está).
+- **Evolução:** trocar o mock por integração real exige a consulta de status no destino; `as_of` sai quando houver um relógio injetável de outra forma.
 
 ### (g) Outros limites reais
 

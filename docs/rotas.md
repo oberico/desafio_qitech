@@ -24,10 +24,10 @@ Cada rota tem um tipo de **acesso**, que define como ela é autenticada:
 | **serviço** | header `INTERNAL-TOKEN`, nas rotas `/internal/*` e nas chamadas entre serviços | `403 RNV000002` |
 
 > [!IMPORTANT]
-> Escritas exigem o header `Idempotency-Key`. Sem ele, a resposta é `400 RNV000001`.
+> O header `Idempotency-Key` é obrigatório em `POST /payments`, `POST /payouts` (1 a 50 caracteres) e `POST /ledger/transactions` (1 a 100). Ausente ou fora do tamanho, a resposta é `400 RNV000012`. As demais escritas (`POST /clients`, `POST /companies`, abertura de conta, `refund`, `close`, `block`/`unblock`, `PUT /internal/payment-methods/{method}` e os jobs) não usam a chave.
 
 > [!NOTE]
-> Este documento é a fonte da verdade do contrato da API e está alinhado com a RFC v7.2 e com o [Catálogo de erros](catalogo-de-erros.md). Em conflito com o código, vale o que está aqui.
+> Este documento é a fonte da verdade do contrato da API e está alinhado com a [RFC v8.0](rfc-rnv-v8.0.md) e com o [Catálogo de erros](catalogo-de-erros.md). Em conflito com o código, vale o que está aqui.
 
 ---
 
@@ -208,7 +208,7 @@ Dono de: `payment`, `payout` (com `destination` jsonb), `payout_attempt`, o cicl
 - **Acesso:** cliente (`Authorization`). Sem corpo e **sem `Idempotency-Key`**. Não exige conta `active` do lojista: o estorno só movimenta contas internas, então `RNV001031` não se aplica.
 - **Resposta `200`:** o `PaymentDTO` do payment, com `status` `refunded`.
 
-Regra de janela por **status**, não por relógio (RFC v7.2: "o primeiro muda `held` para `refunded` ou `settled`; o segundo vê que já não é `held` e desiste"; "depois de `settled`, o estorno é recusado"):
+Regra de janela por **status**, não por relógio (RFC v8.0, §2, caminhos alternativos: "quem decide é o **status**, não o relógio"; "depois de `settled`, o estorno é recusado"):
 
 - `held`: estorna, **mesmo que `release_at` já tenha passado** e o job ainda não tenha rodado.
 - `settled`: `409 RNV001026` (valor já liberado).
