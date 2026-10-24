@@ -9,10 +9,35 @@ Antes de codar, leia `docs/rfc-rnv-v8.0.md` (a spec; o modelo de dados completo 
 
 **Como ler o roadmap `internal_docs/roadmap-construcao-api.md`:** é o padrão de construção do base-api. Ao aplicá-lo neste projeto: (1) o prefixo de erro é `RNV`, não `QIT`; (2) a Fase 4 (fila/SQS) é histórico — NÃO construir, a arquitetura é síncrona; (3) o método é TDD test-first — o teste da fatia vem antes dos arquivos, apesar de o checklist listá-lo por último; (4) `sample_entity` e suas regras são exemplo de padrão, não o domínio.
 
+## Feedback da banca (fase 1) — fase de correção
+
+O `avaliacao.md` (raiz) é o parecer dos tech leads sobre o commit `161ffef`: nota 0,0, eliminado no ESC-01, 6/16 critérios. **O parecer da banca tem precedência sobre a RFC v8.0 e sobre as convenções deste arquivo.** Onde houver conflito, a banca vence; ao implementar cada ponto, a RFC, `docs/` e este CLAUDE.md são atualizados para refletir a mudança (nada de documento desatualizado). Objetivo desta fase: aprendizado e fechar o projeto como referência futura — sem pressa, um ponto por vez, com a explicação do porquê.
+
+**Como trabalhar a correção**
+- Um critério por vez, cada um em branch própria (`fix/<id-do-criterio>`) e PR próprio. Antes de codar, apresentar o plano e o impacto (rotas, schema, testes, docs) e esperar o ok.
+- TDD continua valendo: o teste que reproduz a falha da banca vem primeiro (red), depois a correção (green), depois refatora.
+- Mudança que quebra invariante de dinheiro, concorrência ou idempotência: explicar o risco antes.
+- Divisão por agente: **Hann** (leitura do parecer, pesquisa, atualização de RFC/docs/catálogo), **Chaz** (fatias de código e testes), **Rune** (refactors amplos: rotas, `*_key`, `*_status_event`, commit), **Wren** (compose, MockServer, CI).
+
+**Pendências, em ordem de ataque** (marcar `[x]` ao fechar, com o PR)
+1. [ ] **ESC-01** — eliminatório. `POST /payouts` calcula e lança a tarifa, com a perna de receita no livro; teste confere o saldo debitado com a tarifa.
+2. [ ] **COD-12** — JSON Schema em todas as rotas não-GET com corpo (9 rotas), validado antes do controller (`400 RNV000007` a `RNV000010`).
+3. [ ] **COD-11** — commit só no fim do método público do controller (`_attempt`, `_finish`, `_release`).
+4. [ ] **COD-04** — remover `TestClient` dos 4 testes; passam a chamar a API no ar via harness HTTP.
+5. [ ] **COD-02** — teste 2xx para cada rota `/admin/*` sem cobertura.
+6. [ ] **COD-13** — MockServer no compose para os 4 endpoints de connector (inclui migrar o interbancário de `external-mocks/` `.py`), um teste por endpoint.
+7. [ ] **COD-10** — rotas REST no singular, sem prefixo `/internal`, `GET` no plural paginado (`limit/page/offset`).
+8. [ ] **COD-05** — `*_key` unique em `api_token` e `entry`; `payment`/`payout` referenciam por `id`.
+9. [ ] **COD-07** — tabelas `*_status_event`, gravando cada mudança de status.
+10. [ ] **RFC-01** — RFC fiel à implementação (omissões: `GET /me`, `GET /internal/internal-accounts`, status `created`, tabelas de transição) e erros declarados nunca levantados (observação do COD-03).
+
+Os itens 7–9 contradizem decisões atuais deste arquivo (UUID opaco entre serviços, `allowed_transition`, plural nas rotas). Antes de cada um, alinhar comigo o desenho de migração, porque mexem em muitos arquivos e nos testes.
+
 ## Tese da arquitetura
 
 - O **dinheiro tem um dono só**: o livro-razão de partida dobrada (`transaction` + `entry`) mora inteiro no **Banco**. O **Transferências** orquestra o produto de pagamento e chama o Banco para mover dinheiro.
 - Comunicação entre serviços: **HTTP síncrono + idempotência**. Sem saga, sem message broker. A atomicidade fica no banco de dados do Banco.
+- A direção das chamadas é Transferências → Banco, com **uma única exceção deliberada**: no `POST /accounts/{key}/close`, o Banco chama `GET /internal/accounts/{key}/in-flight` no Transferências (vendas `held` e saques `pending`) por `banco/src/connectors/transferencias_connector.py`. É fail-closed: sem resposta, `503 RNV001036` e a conta continua `active`; com algo em trânsito ou saldo, `422 RNV001035`. Não duplicar o estado de vendas e saques no Banco.
 - A **identidade** segue a mesma regra: o token nasce no Banco; o Transferências valida chamando `GET /auth/me` no Banco. Nunca duplicar a tabela de cliente.
 - **Sem cross-service no nível de dados.** Dois bancos separados (um por serviço); nenhuma FK atravessa serviços. Entre serviços só trafega a chave pública (UUID): o `payment` referencia a `transaction`/`account` do Banco por UUID, como valor opaco, nunca por FK nem join.
 
@@ -22,7 +47,7 @@ Antes de codar, leia `docs/rfc-rnv-v8.0.md` (a spec; o modelo de dados completo 
 - **Tudo em inglês**, com os termos corretos de contabilidade e banco (`normal_balance`, `ledger`, `entry`, `asset`/`liability`/`revenue`).
 - **Camadas, direção só para dentro:** `resource → controller → repository → model`. Repository só faz query (devolve dado ou vazio); controller faz regra de negócio e dá o commit; resource fala HTTP e decide o status; nenhum `raise` no resource. **Não existe camada `service`** — não crie uma.
 - **Erros** no formato `{title, description, translation, code}`, código estável `RNV000xxx` (genérico) / `RNV001xxx` (negócio). Sem código duplicado. Leia `docs/catalogo-de-erros.md` para ver os códigos de erro que já existem e use-os corretamente. Em caso de dúvida ou sugestão de novos códigos, me pergunte antes de criar.
-- **JSON Schema na porta** valida o formato do corpo antes de qualquer consulta (`400 RNV000001`). Pydantic não é usado para contrato de entrada.
+- **JSON Schema na porta** valida o formato do corpo e da query antes de qualquer consulta, com um código por tipo de erro (`400`): `RNV000007` campo obrigatório ausente, `RNV000008` campo ou parâmetro não permitido, `RNV000009` tipo, formato ou enumerador inválido, `RNV000010` valor fora do limite, `RNV000011` cursor inválido, `RNV000012` header `Idempotency-Key` ausente ou fora do tamanho. `RNV000001` ficou só para corpo que não é objeto JSON. Pydantic não é usado para contrato de entrada.
 - **Enumeradores são tabelas de lookup** (`enumerator` UK + FK), nunca texto solto nem `ENUM` nativo. Valores em **minúsculo** (`pending`, `gateway`, `brl`, `d`/`c`); códigos de erro (`RNV000001`…) em maiúsculo.
 - **Datas com fuso:** toda coluna de data é `TIMESTAMPTZ` (no model, `DateTime(timezone=True)`).
 - **Chaves:** `id` interno `SERIAL` (nunca exposto, nunca cruza serviço); chave pública `CHAR(36)` UUID v4 (é o que sai na resposta e o único que trafega entre serviços).
@@ -33,7 +58,7 @@ Antes de codar, leia `docs/rfc-rnv-v8.0.md` (a spec; o modelo de dados completo 
 - **Idempotência — na própria entidade, sem tabela separada.** Cada operação idempotente carrega `idempotency_key` + `payload_hash` (SHA-256 do JSON canônico dos campos que definem o pedido) na SUA tabela: `transaction` no Banco, `payment` e `payout` no Transferências. `UNIQUE` nomeado, escopado por empresa (company_key + operação quando precisar distinguir).
 - O insert com a chave é a **primeira escrita** da operação. Se o `UNIQUE` estourar: `rollback`, busca a linha pela chave e compara o `payload_hash` — igual, devolve o estado **atual** da entidade (via DTO) com `200`; diferente, `422 RNV001024`.
 - A resposta do retry é **reconstruída do DTO** da entidade (estado atual), não um snapshot gravado. Consequência consciente: um retry tardio reflete o agora (um payout já liquidado volta `settled`/`200`, não o `pending`/`201` original). Erros não são cacheados: tentativa que deu rollback libera a chave para nova tentativa.
-- Lançamentos criados por job usam chave determinística (`settlement:<payment_key>`, `payout:<payout_key>`), para o retry reencontrar o lançamento no Banco.
+- Toda chave de lançamento no Banco é determinística, para o retry reencontrar o lançamento. Derivadas da chave do cliente: `receipt:<company_key>:<chave>` e `payout:<company_key>:<chave>`. Derivadas da entidade, disparadas por job ou estorno: `settlement:<payment_key>`, `refund:<payment_key>`, `settlement:<payout_key>`, `reversal:<payout_key>` e `orphan-refund:<transaction_key>` (reconciliação de recebimento sem venda).
 - A chave é do cliente; o banco **não adivinha intenção**. A chave nunca expira. **Não há tabela `idempotency` genérica nem `response_body` gravado.**
 - **CPF/CNPJ mascarados** (`CHAR(14)`/`CHAR(18)`, `pattern` com pontuação).
 - **Máquina de estados:** as transições permitidas moram em tabela (`allowed_transition` no Banco; `payment_transition`/`payout_transition` no Transferências) e o controller consulta antes de trocar o status. A conta é a exceção: as transições dela (na abertura, `active` ou `rejected` pelo birô; depois `active → blocked | closed` e `blocked → active`) são conferidas no próprio `AccountController`, pelo status atual (`409 RNV001009`/`RNV001010`). **O ledger só responde "o dinheiro se moveu?": `pending`/`settled`** — sem `failed` (ou faz settlement, ou faz reversal; o estorno não muda o status do original, quem marca é a reversal via `reverses_transaction_id` único). `failed` existe só em `payout_status`. `payment`: `held`/`settled`/`refunded`.
@@ -46,11 +71,11 @@ O contrato canônico de rotas vive em `docs/rotas.md` — o que cada endpoint re
 ## Autenticação
 
 - **público** (bypass): `/`, `/health_check`, `POST /clients`.
-- **cliente**: header `Authorization` com o token → `401 RNV000003` se faltar/for inválido.
-- **admin**: rotas `/admin/*` com token de admin.
+- **cliente**: header `Authorization: Bearer <token>` → `401 RNV000003` se faltar/for inválido.
+- **admin**: rotas `/admin/*` (nos dois serviços) com `Authorization: Bearer <ADMIN_TOKEN>`; o token vem da env `ADMIN_TOKEN` (não existe tabela de admin). Ausente/inválido → `401 RNV000003`; o `INTERNAL-TOKEN` não vale (também `401`); token de cliente válido → `403 RNV001027`.
 - **serviço**: rotas `/internal/*` e as chamadas entre serviços com `INTERNAL-TOKEN` → `403 RNV000002`.
 - Token hasheado no banco (SHA-256), com rotação (`revoked_at`). Contra IDOR: `404`, não 403.
-- O token **autentica** (middleware); cada rota **autoriza** (controller): falta company validada pelo birô → `403` (código próprio); falta conta `active` → `403` (código próprio).
+- O token **autentica** (middleware); cada rota **autoriza** (controller): empresa sem conta aberta → `403 RNV001030` (não se aplica ao `POST /payouts`, que identifica a conta pela `account_key`); conta fora de `active` → `403 RNV001031` na escrita (leitura de saldo, extrato e consultas passa com a conta `blocked`/`closed`). O birô valida a empresa uma vez, na abertura da conta, e **não tem código próprio**: a reprovação deixa a conta `rejected`, um estado "não active" que cai em `RNV001031`. Empresa reprovada não reabre conta.
 
 ## Como construir uma entidade (ordem por fatia)
 
@@ -72,6 +97,6 @@ O contrato canônico de rotas vive em `docs/rotas.md` — o que cada endpoint re
 
 ## Fronteira dos serviços
 
-- **Banco** é dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`entry`), auth. Expõe `POST /ledger/transactions` (lançamento idempotente) e `GET /auth/me` (só com `INTERNAL-TOKEN`).
+- **Banco** é dono de: `client`, `company`, `account`, `api_token`, ledger (`transaction`/`entry`), auth. Expõe `POST /ledger/transactions` (lançamento idempotente), `GET /auth/me`, `GET /internal/ledger/receipts` e `GET /internal/internal-accounts` (só com `INTERNAL-TOKEN`). No `close`, chama o Transferências (`GET /internal/accounts/{key}/in-flight`), a única chamada do Banco para fora.
 - **Transferências** é dono de: `payment`, `payout` (com `destination` jsonb dado na requisição, imutável), `payout_attempt`, o ciclo (janela `release_at`, tarifa por `payment_method`, estados). Chama o Banco por `connectors/bank_connector.py` e o interbancário (mock em `external-mocks/`, `POST /interbank/transfers`) por `connectors/interbank_connector.py`, com `INTERBANK_API_URL` e `INTERBANK_TIMEOUT_SECONDS`. O birô é hoje o `MockBureauConnector` dentro do Banco; migra para o `external-mocks/` numa fatia própria.
 - Taxa e janela são **dado** (`payment_method`: `fee_bps` + janela por meio), snapshotados no `payment` na chegada; o settle usa o snapshot. O cálculo da tarifa e a escolha das contas é do **Transferências**; o Banco só valida que os lançamentos fecham e dedupe.

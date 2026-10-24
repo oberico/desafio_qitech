@@ -21,7 +21,7 @@ Birô: hoje é o `MockBureauConnector` dentro do Banco. Ele migra para o `extern
 
 ## Domínio `interbank`
 
-Simula o sistema externo que executa a saída do dinheiro (passo 7 da RFC v7.2).
+Simula o sistema externo que executa a saída do dinheiro (passo 7 da RFC v8.0).
 
 ### Quem chama
 
@@ -62,7 +62,7 @@ Ponto de partida (passo 6): `payout` `pending`, `transaction` payout `pending` (
 | `timeout` | `timeout` nas 3 tentativas | `pending` com backoff crescente após a 1ª e a 2ª; na 3ª sem resposta `→ failed` | idem `refuse`: a reversal devolve o dinheiro ao lojista |
 | `flaky` | `timeout`, `timeout`, `confirmed` | `pending` após as 2 primeiras; `→ settled` na 3ª | como `confirm` na 3ª; nenhuma reversal. Prova que retry + backoff funcionam sem perder o payout |
 
-Ver RFC v7.2 §2, passos 6-7 e "Caminhos alternativos" (mock sem resposta, recusa definitiva). Com `as_of` (ver `rotas.md`), os testes avançam o backoff entre as chamadas de reconcile sem esperar.
+Ver RFC v8.0 §2, passos 6-7 e "Caminhos alternativos" (mock sem resposta, recusa definitiva). Com `as_of` (ver `rotas.md`), os testes avançam o backoff entre as chamadas de reconcile sem esperar.
 
 ### Limites aceitos
 
