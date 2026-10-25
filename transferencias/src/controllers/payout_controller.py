@@ -18,7 +18,8 @@ from errors import (
     ValueOutOfRange,
 )
 from models import Payout, PayoutStatus, PayoutStatusEvent
-from repositories import PayoutRepository
+from repositories import PayoutFeeRepository, PayoutRepository
+from utils.fee import split_fee
 from utils.payload_hash import payload_hash
 from utils.schema_handler import validate_json
 
@@ -33,6 +34,7 @@ class PayoutController(BaseController):
     def __init__(self, session) -> None:
         super().__init__(session)
         self.payout_repository = PayoutRepository(session)
+        self.payout_fee_repository = PayoutFeeRepository(session)
         self.bank_connector = BankConnector()
 
     def create(self, payload: dict, idempotency_key: str, companies: list) -> tuple:
@@ -40,8 +42,13 @@ class PayoutController(BaseController):
         self._ensure_destination_size(payload["destination"])
         company = self._authorized_company(payload["account_key"], companies)
 
+        fee = self.payout_fee_repository.get_latest()
         if not 0 < payload["amount_minor"] <= MAX_AMOUNT_MINOR:
             raise InvalidAmount(payload["amount_minor"], MAX_AMOUNT_MINOR)
+
+        fee_minor = split_fee(payload["amount_minor"], fee.fee_bps)[0]
+        if payload["amount_minor"] + fee_minor > MAX_AMOUNT_MINOR:
+            raise InvalidAmount(payload["amount_minor"] + fee_minor, MAX_AMOUNT_MINOR)
 
         purpose = self.payout_repository.get_purpose(payload["purpose"])
         status = self.payout_repository.get_status(PayoutStatus.PENDING)
@@ -51,9 +58,12 @@ class PayoutController(BaseController):
             company_key=company["company_key"],
             account_key=company["account_key"],
             purpose=purpose,
+            fee_id=fee.id,
             destination=payload["destination"],
             status=status,
             amount_minor=payload["amount_minor"],
+            fee_bps=fee.fee_bps,
+            fee_minor=fee_minor,
             idempotency_key=idempotency_key,
             payload_hash=payload_hash(self._meaningful_fields(payload)),
         )
@@ -91,13 +101,13 @@ class PayoutController(BaseController):
         return PayoutDTO.obj_to_dict(payout, self.payout_repository.count_attempts(payout.id))
 
     def _post_payout_debit(self, payout: Payout) -> str:
-        debit = {
-            "type": "payout",
-            "entries": [
-                {"account_key": payout.account_key, "debit_minor": payout.amount_minor},
-                {"account_code": "in_transit", "credit_minor": payout.amount_minor},
-            ],
-        }
+        entries = [
+            {"account_key": payout.account_key, "debit_minor": payout.amount_minor + payout.fee_minor},
+            {"account_code": "in_transit", "credit_minor": payout.amount_minor},
+        ]
+        if payout.fee_minor > 0:
+            entries.append({"account_code": "revenue", "credit_minor": payout.fee_minor})
+        debit = {"type": "payout", "entries": entries}
         try:
             transaction = self.bank_connector.post_ledger_transaction(
                 debit, f"payout:{payout.company_key}:{payout.idempotency_key}", forward_refusals=True

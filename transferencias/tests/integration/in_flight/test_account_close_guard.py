@@ -2,8 +2,6 @@ from uuid import uuid4
 
 from tests.utils.payload_generator import PayloadGenerator
 
-FUNDING_MINOR = 5_000_000
-
 
 class TestAccountCloseWithValuesInFlight:
     def test_refuses_closing_with_a_held_payment(self, bank, client_token, held_payment_account):
@@ -33,8 +31,8 @@ class TestAccountCloseWithValuesInFlight:
     def test_refuses_closing_with_a_pending_payout_even_with_zero_balance(
         self, bank, client_token, payouts, funded_account
     ):
-        account_key = funded_account(FUNDING_MINOR)
-        payload = PayloadGenerator.create_payout_payload(account_key=account_key, amount_minor=FUNDING_MINOR)
+        account_key = funded_account(1005)
+        payload = PayloadGenerator.create_payout_payload(account_key=account_key, amount_minor=1000)
         status, _ = payouts.post_payout(payload, str(uuid4()))
         assert status == 201
 

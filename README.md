@@ -1,6 +1,6 @@
 # RNV — Instituição de Pagamento com Conta PJ
 
-Conta digital para empresas com gateway de pagamento: o lojista vende, o dinheiro fica retido numa janela de liberação, cai na conta descontada a tarifa, e ele saca para fora. Não oferecemos crédito. Desafio do Bootcamp QI Tech.
+Conta digital para empresas com gateway de pagamento: o lojista vende, o dinheiro fica retido numa janela de liberação, cai na conta descontada a taxa, e ele saca para fora pagando uma tarifa de saída, cobrada por cima do valor enviado. Não oferecemos crédito. Desafio do Bootcamp QI Tech.
 
 ## Arquitetura
 
@@ -18,7 +18,7 @@ flowchart LR
 | Serviço | Dono de |
 |---|---|
 | **Banco** (`banco/`) | clientes, empresas, contas, tokens e livro-razão (`transaction`/`entry`) |
-| **Transferências** (`transferencias/`) | vendas (`payment`), saques (`payout`), tarifas, janela de liberação e jobs |
+| **Transferências** (`transferencias/`) | vendas (`payment`), saques (`payout`), taxa de venda e tarifa de saída, janela de liberação e jobs |
 | **external-mocks** (`external-mocks/`) | simulador do interbancário |
 
 Um banco de dados por serviço; comunicação por HTTP síncrono com `INTERNAL-TOKEN`.
@@ -55,7 +55,7 @@ Testes de integração caixa-preta, via HTTP, em TDD.
 
 ### Ponta a ponta (Postman ou Insomnia)
 
-[`docs/postman/rnv-ponta-a-ponta.postman_collection.json`](docs/postman/rnv-ponta-a-ponta.postman_collection.json) conta uma história completa pelos três serviços: cadastro, conta aberta pelo birô, vendas em pix, boleto e cartão, estorno, liberação com tarifa, saque confirmado e saque recusado com o dinheiro voltando, encerramento da conta e a equação do livro conferida no admin. São 40 requisições com testes de status, código de erro e saldos.
+[`docs/postman/rnv-ponta-a-ponta.postman_collection.json`](docs/postman/rnv-ponta-a-ponta.postman_collection.json) conta uma história completa pelos três serviços: cadastro, conta aberta pelo birô, vendas em pix, boleto e cartão, estorno, liberação com taxa, saque confirmado e saque recusado com o dinheiro voltando, encerramento da conta e a equação do livro conferida no admin. São 40 requisições com testes de status, código de erro e saldos.
 
 ```bash
 docker compose up -d

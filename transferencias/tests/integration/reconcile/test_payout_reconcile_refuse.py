@@ -39,10 +39,10 @@ class TestPayoutReconcileRefuse:
 
     def test_the_money_returns_to_the_account(self, reconcile, payouts, open_account, new_payout):
         account_key = open_account(funding_minor=7_000)
-        new_payout("refuse", amount_minor=7_000, account_key=account_key)
+        new_payout("refuse", amount_minor=6_965, account_key=account_key)
         reconcile.run(at(now(), 0))
 
-        retry = PayloadGenerator.create_payout_payload(account_key=account_key, amount_minor=7_000)
+        retry = PayloadGenerator.create_payout_payload(account_key=account_key, amount_minor=6_965)
         status, response = payouts.post_payout(retry, str(uuid4()))
 
         assert status == 201, f"the reversal did not give the money back: {response}"

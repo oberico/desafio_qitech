@@ -49,10 +49,11 @@ def payout_payload(funded_account):
 
 
 def payout_ledger_payload(payout: dict) -> dict:
-    return {
-        "type": "payout",
-        "entries": [
-            {"account_key": payout["account_key"], "debit_minor": payout["amount_minor"]},
-            {"account_code": "in_transit", "credit_minor": payout["amount_minor"]},
-        ],
-    }
+    fee_minor = payout["fee_minor"]
+    entries = [
+        {"account_key": payout["account_key"], "debit_minor": payout["amount_minor"] + fee_minor},
+        {"account_code": "in_transit", "credit_minor": payout["amount_minor"]},
+    ]
+    if fee_minor > 0:
+        entries.append({"account_code": "revenue", "credit_minor": fee_minor})
+    return {"type": "payout", "entries": entries}

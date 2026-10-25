@@ -6,7 +6,7 @@ RUNS_TO_DRAIN = 10
 
 class TestPayoutReconcileCap:
     def test_a_run_processes_at_most_the_cap_and_later_runs_finish_the_rest(self, reconcile, payouts, open_account, new_payout):
-        account_key = open_account(funding_minor=(MAX_PER_RUN + EXTRA_PAYOUTS) * 1_000)
+        account_key = open_account(funding_minor=(MAX_PER_RUN + EXTRA_PAYOUTS) * 1_005)
         mine = {new_payout(account_key=account_key)["payout_key"] for _ in range(MAX_PER_RUN + EXTRA_PAYOUTS)}
         as_of = at(now(), 0)
 

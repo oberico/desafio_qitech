@@ -4,6 +4,7 @@ from models.payment_status import PaymentStatus
 from models.payment import Payment
 from models.payment_transition import PaymentTransition
 from models.payment_status_event import PaymentStatusEvent
+from models.payout_fee import PayoutFee
 from models.payout_purpose import PayoutPurpose
 from models.payout_status import PayoutStatus
 from models.payout_transition import PayoutTransition

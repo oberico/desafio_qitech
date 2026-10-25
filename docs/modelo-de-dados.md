@@ -152,6 +152,7 @@ erDiagram
     payment_status ||--o{ payment_transition : "de / para"
     payment ||--o{ payment_status_event : "historico"
     payment_status ||--o{ payment_status_event : "estado registrado"
+    payout_fee ||--o{ payout : "versao usada no pedido"
     payout_purpose ||--o{ payout : "finalidade"
     payout_status ||--o{ payout : "estado atual"
     payout_status ||--o{ payout_transition : "de / para"
@@ -166,6 +167,12 @@ erDiagram
         integer version "CHECK maior ou igual a 1; append-only"
         integer fee_bps "CHECK entre 0 e 10000 bps"
         integer release_window_hours "CHECK entre 0 e 8760 horas"
+        timestamptz created_at
+    }
+    payout_fee {
+        serial id PK
+        integer version UK "CHECK maior ou igual a 1; append-only"
+        integer fee_bps "CHECK entre 0 e 10000 bps; tarifa unica de saida; seed versao 1 = 50"
         timestamptz created_at
     }
     payment_status {
@@ -230,9 +237,12 @@ erDiagram
         char36 company_key "ref ao Banco; UK com idempotency_key"
         char36 account_key "conta debitada no Banco"
         integer purpose_id FK
+        integer fee_id FK "versao de payout_fee no pedido"
         jsonb destination "destino externo, imutavel, ate 4096 bytes"
         integer status_id FK
-        bigint amount_minor "CHECK maior que 0"
+        bigint amount_minor "CHECK maior que 0; o destino recebe este valor inteiro"
+        integer fee_bps "SNAPSHOT; CHECK entre 0 e 10000"
+        bigint fee_minor "SNAPSHOT; CHECK maior ou igual a 0; cobrado por cima, o debito e amount_minor mais fee_minor"
         timestamptz last_attempt_at "nulo; base do backoff"
         varchar255 failure_reason "nulo; interbank_refused ou interbank_timeout"
         char36 transaction_key UK "nulo ate o debito; ref ao livro"
@@ -257,7 +267,9 @@ erDiagram
     }
 ```
 
-**Restrições que carregam regra de negócio:** `uq_payment_idempotency` e `uq_payout_idempotency` (`UNIQUE(company_key, idempotency_key)`) são a idempotência do produto; `UNIQUE(enumerator, version)` versiona a tarifa sem `UPDATE`; `UNIQUE(payout_id, attempt_number)` impede tentativa dupla na corrida entre runs do reconcile.
+**Restrições que carregam regra de negócio:** `uq_payment_idempotency` e `uq_payout_idempotency` (`UNIQUE(company_key, idempotency_key)`) são a idempotência do produto; `UNIQUE(enumerator, version)` versiona a taxa de venda sem `UPDATE`, e `UNIQUE(version)` faz o mesmo com a tarifa de saída (`payout_fee`; o `payout` guarda a versão usada em `fee_id`, `NOT NULL` com FK para `payout_fee.id`, e **copia** `fee_bps` e `fee_minor`, como o `payment` guarda `method_id` e copia `fee_bps`); `UNIQUE(payout_id, attempt_number)` impede tentativa dupla na corrida entre runs do reconcile.
+
+`payout_fee` nasce com a versão 1 semeada no `transferencias/database/database.sql`, com `fee_bps = 50`, como o `payment_method`; por isso sempre existe versão vigente e o `payout.fee_id` nunca fica sem referência. A versão atual é a de maior `version`. Pernas do lançamento do payout (livro do Banco): D cliente `amount_minor + fee_minor`, C `in_transit` `amount_minor`, C `revenue` `fee_minor`.
 
 **Índices:** `payment (status_id, release_at)` encontra as vendas vencidas para o job de liberação; `payout (status_id, last_attempt_at)` encontra os saques acionáveis para a reconciliação; `payment (company_key, created_at)` e `payout (company_key, created_at)` atendem as consultas por empresa; `payout_attempt (payout_id)` deriva a fase do saque.
 

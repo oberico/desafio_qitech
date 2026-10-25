@@ -111,15 +111,28 @@ CREATE TABLE payment(
     CONSTRAINT uq_payment_idempotency UNIQUE(company_key, idempotency_key)
 );
 
+CREATE TABLE payout_fee(
+    id                              SERIAL PRIMARY KEY,
+    version                         INTEGER NOT NULL CHECK (version >= 1),
+    fee_bps                         INTEGER NOT NULL CHECK (fee_bps BETWEEN 0 AND 10000),
+    created_at                      TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
+    UNIQUE(version)
+);
+
+INSERT INTO payout_fee (version, fee_bps) VALUES (1, 50);
+
 CREATE TABLE payout(
     id                              SERIAL PRIMARY KEY,
     payout_key                      CHAR(36) NOT NULL,
     company_key                     CHAR(36) NOT NULL,
     account_key                     CHAR(36) NOT NULL,
     purpose_id                      INTEGER NOT NULL REFERENCES payout_purpose(id),
+    fee_id                          INTEGER NOT NULL REFERENCES payout_fee(id),
     destination                     JSONB NOT NULL,
     status_id                       INTEGER NOT NULL REFERENCES payout_status(id),
     amount_minor                    BIGINT NOT NULL CHECK (amount_minor > 0),
+    fee_bps                         INTEGER NOT NULL CHECK (fee_bps BETWEEN 0 AND 10000),
+    fee_minor                       BIGINT NOT NULL CHECK (fee_minor >= 0),
     last_attempt_at                 TIMESTAMPTZ,
     failure_reason                  VARCHAR(255),
     transaction_key                 CHAR(36),

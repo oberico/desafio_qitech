@@ -88,12 +88,11 @@ def settlement_replay(bank, internal_token, payout: dict) -> tuple:
 
 
 def reversal_replay(bank, internal_token, payout: dict) -> tuple:
-    payload = {
-        "type": "reversal",
-        "reverses_transaction_key": payout["transaction_key"],
-        "entries": [
-            {"account_code": "in_transit", "debit_minor": payout["amount_minor"]},
-            {"account_key": payout["account_key"], "credit_minor": payout["amount_minor"]},
-        ],
-    }
+    fee_minor = payout["fee_minor"]
+    entries = []
+    if fee_minor > 0:
+        entries.append({"account_code": "revenue", "debit_minor": fee_minor})
+    entries.append({"account_code": "in_transit", "debit_minor": payout["amount_minor"]})
+    entries.append({"account_key": payout["account_key"], "credit_minor": payout["amount_minor"] + fee_minor})
+    payload = {"type": "reversal", "reverses_transaction_key": payout["transaction_key"], "entries": entries}
     return bank.post_ledger_transaction(payload, f"reversal:{payout['payout_key']}", internal_token)
