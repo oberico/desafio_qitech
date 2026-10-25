@@ -12,6 +12,8 @@ class PayoutDTO:
             "destination": payout.destination,
             "status": payout.status.enumerator,
             "amount_minor": payout.amount_minor,
+            "fee_bps": payout.fee_bps,
+            "fee_minor": payout.fee_minor,
             "failure_reason": payout.failure_reason,
             "transaction_key": payout.transaction_key,
             "attempts": attempts,

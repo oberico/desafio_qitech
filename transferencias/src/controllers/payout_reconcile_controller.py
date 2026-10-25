@@ -118,14 +118,12 @@ class PayoutReconcileController(BaseController):
         return self._finish(payout, SETTLED, SETTLEMENT_REASON, None, as_of)
 
     def _reverse(self, payout: Payout, last_result: str, as_of: datetime) -> str:
-        payload = {
-            "type": "reversal",
-            "reverses_transaction_key": payout.transaction_key,
-            "entries": [
-                {"account_code": "in_transit", "debit_minor": payout.amount_minor},
-                {"account_key": payout.account_key, "credit_minor": payout.amount_minor},
-            ],
-        }
+        entries = []
+        if payout.fee_minor > 0:
+            entries.append({"account_code": "revenue", "debit_minor": payout.fee_minor})
+        entries.append({"account_code": "in_transit", "debit_minor": payout.amount_minor})
+        entries.append({"account_key": payout.account_key, "credit_minor": payout.amount_minor + payout.fee_minor})
+        payload = {"type": "reversal", "reverses_transaction_key": payout.transaction_key, "entries": entries}
         if not self._post_to_bank(payload, f"reversal:{payout.payout_key}"):
             return PENDING
         reason = FAILURE_REASONS[last_result]

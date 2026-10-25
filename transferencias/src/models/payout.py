@@ -3,6 +3,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from models.base import Base
+from models.payout_fee import PayoutFee
 from models.payout_purpose import PayoutPurpose
 from models.payout_status import PayoutStatus
 
@@ -15,9 +16,12 @@ class Payout(Base):
     company_key = Column(CHAR(36), nullable=False)
     account_key = Column(CHAR(36), nullable=False)
     purpose_id = Column(Integer, ForeignKey(PayoutPurpose.id), nullable=False)
+    fee_id = Column(Integer, ForeignKey(PayoutFee.id), nullable=False)
     destination = Column(JSONB, nullable=False)
     status_id = Column(Integer, ForeignKey(PayoutStatus.id), nullable=False)
     amount_minor = Column(BigInteger, nullable=False)
+    fee_bps = Column(Integer, nullable=False)
+    fee_minor = Column(BigInteger, nullable=False)
     last_attempt_at = Column(DateTime(timezone=True))
     failure_reason = Column(String(255))
     transaction_key = Column(CHAR(36))

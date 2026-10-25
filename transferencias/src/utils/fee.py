@@ -12,3 +12,4 @@ def split_fee(amount_minor: int, fee_bps: int) -> tuple[int, int]:
     fee_minor = -(-amount_minor * fee_bps // BPS_DENOMINATOR)
     net_minor = amount_minor - fee_minor
     return fee_minor, net_minor
+
